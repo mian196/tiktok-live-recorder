@@ -40,8 +40,8 @@ if %errorlevel% neq 0 (
 echo.
 
 :: 2. Setup virtual environment and sync dependencies
-echo [INFO] Syncing dependencies using uv...
-uv sync
+echo [INFO] Syncing dependencies into local virtual environment (.venv)...
+uv sync --all-extras
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to sync dependencies.
     pause

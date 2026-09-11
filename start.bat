@@ -9,7 +9,7 @@ if %errorlevel% neq 0 (
 
 if not exist .venv (
     echo [INFO] Setting up virtual environment...
-    uv sync
+    uv sync --all-extras
 )
 
 uv run python src/main.py
