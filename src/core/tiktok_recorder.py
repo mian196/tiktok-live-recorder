@@ -224,7 +224,9 @@ class TikTokRecorder:
             f"TK_{user}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
         )
         if self.output:
-            return str(Path(self.output) / filename)
+            output_dir = Path(self.output) / user
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return str(output_dir / filename)
         return filename
 
     def start_recording(self, user, room_id):
