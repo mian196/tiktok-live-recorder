@@ -91,11 +91,14 @@ if not exist configs\telegram.json (
 echo.
 
 :: 4. Register Startup trigger (Task Scheduler, fallback to Startup Folder)
-echo [INFO] Registering startup trigger...
-powershell -Command "$action = New-ScheduledTaskAction -Execute ($pwd.Path + '\start.bat') -WorkingDirectory $pwd.Path; $trigger = New-ScheduledTaskTrigger -AtLogOn; $settings = New-ScheduledTaskSettingsSet -Compatibility Win8; $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings; $task.Settings.Hidden = $true; Register-ScheduledTask -TaskName 'TikTok_Live_Recorder' -InputObject $task -Force" >nul 2>&1
+echo [INFO] Registering startup trigger in Windows Task Scheduler...
+set "SCRIPT_DIR=%~dp0"
+set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+
+powershell -ExecutionPolicy Bypass -Command "$scriptDir = '%SCRIPT_DIR%'; $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $scriptDir + '\silent_start.vbs\"') -WorkingDirectory $scriptDir; $trigger = New-ScheduledTaskTrigger -AtLogOn; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -Compatibility Win8; $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings; Register-ScheduledTask -TaskName 'TikTok_Live_Recorder' -InputObject $task -Force" >nul 2>&1
 if %errorlevel% EQU 0 goto TASK_SUCCESS
 
-echo [INFO] Task Scheduler registration failed (requires Administrator privileges).
+echo [INFO] Task Scheduler registration requires Administrator privileges.
 echo [INFO] Falling back to Windows Startup Folder (user-level startup, no admin needed)...
 
 set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
@@ -103,14 +106,14 @@ if not exist "%STARTUP_DIR%" goto STARTUP_FAILED
 
 echo @echo off> "%STARTUP_DIR%\TikTok_Live_Recorder.bat"
 echo cd /d "%~dp0">> "%STARTUP_DIR%\TikTok_Live_Recorder.bat"
-echo start "" /b "start.bat">> "%STARTUP_DIR%\TikTok_Live_Recorder.bat"
+echo wscript.exe "%~dp0silent_start.vbs">> "%STARTUP_DIR%\TikTok_Live_Recorder.bat"
 echo [SUCCESS] Created startup shortcut in Windows Startup Folder!
-echo [SUCCESS] The script will run automatically every time you log into Windows.
+echo [SUCCESS] The script will run silently in background every time you log into Windows.
 goto REGISTRATION_END
 
 :TASK_SUCCESS
 echo [SUCCESS] Windows Task Scheduler task 'TikTok_Live_Recorder' registered successfully!
-echo [SUCCESS] The script will run automatically every time you log into Windows.
+echo [SUCCESS] Visible in Task Scheduler Library and set to run automatically on logon.
 goto REGISTRATION_END
 
 :STARTUP_FAILED
