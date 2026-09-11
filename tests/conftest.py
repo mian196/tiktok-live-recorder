@@ -20,6 +20,18 @@ def manage_test_output_environment():
     if test_tmp_dir.exists():
         shutil.rmtree(test_tmp_dir, ignore_errors=True)
 
+    # Teardown: Remove any stray test FLV or MP4 files created in the project root
+    for stray_file in root_dir.glob("TK_*.flv"):
+        try:
+            stray_file.unlink()
+        except OSError:
+            pass
+    for stray_file in root_dir.glob("TK_*.mp4"):
+        try:
+            stray_file.unlink()
+        except OSError:
+            pass
+
 
 @pytest.fixture(autouse=True)
 def isolate_cli_tests(request, monkeypatch):
@@ -28,3 +40,13 @@ def isolate_cli_tests(request, monkeypatch):
     """
     if "test_config" not in request.node.nodeid:
         monkeypatch.setattr("utils.utils.read_config", lambda: {})
+
+
+@pytest.fixture(autouse=True)
+def disable_real_network_notifications(request, monkeypatch):
+    """
+    Prevent any tests from sending real HTTP requests to Discord webhooks or Telegram.
+    """
+    if "test_notifier" not in request.node.nodeid:
+        monkeypatch.setattr("notify.notifier.Notifier._send_discord", lambda self, *args, **kwargs: None)
+        monkeypatch.setattr("notify.notifier.Notifier._send_telegram", lambda self, *args, **kwargs: None)

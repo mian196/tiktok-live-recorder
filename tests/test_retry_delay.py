@@ -11,12 +11,13 @@ from utils.enums import Mode  # noqa: E402
 from utils.recorder_config import RecorderConfig  # noqa: E402
 
 
-def test_retry_delay_used_on_reconnection():
+def test_retry_delay_used_on_reconnection(tmp_path):
     recorder = TikTokRecorder(
         RecorderConfig(
             mode=Mode.MANUAL,
             user="test_user",
             retry_delay=7,
+            output=str(tmp_path),
         )
     )
 

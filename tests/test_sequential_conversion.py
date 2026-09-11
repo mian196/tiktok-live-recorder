@@ -11,11 +11,12 @@ from utils.enums import Mode  # noqa: E402
 from utils.recorder_config import RecorderConfig  # noqa: E402
 
 
-def test_conversion_lock_prevents_concurrent_conversions():
+def test_conversion_lock_prevents_concurrent_conversions(tmp_path):
     recorder = TikTokRecorder(
         RecorderConfig(
             mode=Mode.MANUAL,
             user="test_user",
+            output=str(tmp_path),
         )
     )
 
