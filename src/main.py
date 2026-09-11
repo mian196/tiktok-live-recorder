@@ -93,14 +93,28 @@ def main():
         # read cookies from the config file
         cookies = read_cookies()
 
+        from notify.notifier import Notifier
+        notifier = Notifier()
+        notifier.notify("app_started", mode=args.mode, interval=args.automatic_interval)
+
         # run the recordings based on the parsed arguments
         run_recordings(args, mode, cookies)
 
     except TikTokRecorderError as ex:
         logger.error(f"Application Error: {ex}")
+        try:
+            from notify.notifier import Notifier
+            Notifier().notify("app_error", error=str(ex))
+        except Exception:
+            pass
 
     except Exception as ex:
         logger.critical(f"Generic Error: {ex}", exc_info=True)
+        try:
+            from notify.notifier import Notifier
+            Notifier().notify("app_error", error=str(ex))
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

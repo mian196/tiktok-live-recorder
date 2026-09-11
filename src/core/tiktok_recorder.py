@@ -6,6 +6,7 @@ from threading import Thread
 from requests import RequestException
 
 from core.tiktok_api import TikTokAPI
+from notify.notifier import Notifier
 from utils.logger_manager import logger
 from utils.recorder_config import RecorderConfig
 from utils.video_management import VideoManagement
@@ -16,6 +17,7 @@ from utils.enums import Mode, Error, TimeOut, TikTokError
 class TikTokRecorder:
     def __init__(self, config: RecorderConfig):
         self.tiktok = TikTokAPI(proxy=config.proxy, cookies=config.cookies)
+        self.notify = Notifier()
 
         self.url = config.url
         self.user = config.user
@@ -110,6 +112,8 @@ class TikTokRecorder:
         while True:
             try:
                 self.room_id = self.tiktok.get_room_id_from_user(self.user)
+                if self.room_id and self.tiktok.is_room_alive(self.room_id):
+                    self.notify.notify("live_detected", user=self.user)
                 self.manual_mode()
 
             except (UserLiveError, LiveNotFound) as ex:
@@ -130,7 +134,8 @@ class TikTokRecorder:
                 try:
                     self.user = user
                     self.room_id = self.tiktok.get_room_id_from_user(user)
-                    if self.room_id:
+                    if self.room_id and self.tiktok.is_room_alive(self.room_id):
+                        self.notify.notify("live_detected", user=user)
                         self.manual_mode()
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)
@@ -168,6 +173,7 @@ class TikTokRecorder:
                             continue
 
                         logger.info(f"@{follower} is live. Starting recording...")
+                        self.notify.notify("live_detected", user=follower)
 
                         thread = Thread(
                             target=self.start_recording,
@@ -221,6 +227,7 @@ class TikTokRecorder:
         """
         live_urls = self.tiktok.get_live_url_candidates(room_id, user=user)
         if not live_urls:
+            self.notify.notify("recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL))
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         final_output = self._build_output_path(user)
@@ -236,6 +243,13 @@ class TikTokRecorder:
             else:
                 logger.info(f"Started recording (stream {index}/{len(live_urls)})...")
 
+            self.notify.notify(
+                "recording_started",
+                user=user,
+                stream_index=index,
+                total=len(live_urls),
+            )
+
             buffer_size = 512 * 1024  # 512 KB buffer
             recorded_segments = []
             part_index = 1
@@ -249,6 +263,7 @@ class TikTokRecorder:
                 # Check room status before attempting connection/reconnection
                 if not self.tiktok.is_room_alive(room_id):
                     logger.info("User is no longer live. Stopping recording.")
+                    self.notify.notify("user_offline", user=user)
                     break
 
                 segment_path = f"{base_stem}_part{part_index}.flv"
@@ -275,6 +290,7 @@ class TikTokRecorder:
                                     logger.info(
                                         "User is no longer live. Stopping recording."
                                     )
+                                    self.notify.notify("user_offline", user=user)
                                     stop_recording = True
                         finally:
                             if buffer:
@@ -297,6 +313,7 @@ class TikTokRecorder:
                         f"Unexpected error during recording: {ex}",
                         exc_info=True,
                     )
+                    self.notify.notify("recording_failed", user=user, error=str(ex))
                     stop_recording = True
 
                 if segment_bytes >= min_stream_bytes:
@@ -315,6 +332,7 @@ class TikTokRecorder:
                 "Trying another CDN/quality..."
             )
         else:
+            self.notify.notify("recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL))
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         logger.info("Recording finished. Processing video...")
@@ -325,6 +343,14 @@ class TikTokRecorder:
             self.ffmpeg_path,
             self.keep_flv,
         )
+
+        if success:
+            self.notify.notify(
+                "recording_finished",
+                user=user,
+                file=final_output,
+                size_mb=round(total_bytes_written / (1024 * 1024)),
+            )
 
         if success and self.use_telegram:
             try:
