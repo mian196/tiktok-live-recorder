@@ -1,6 +1,7 @@
 import sys
 import os
 import multiprocessing
+from utils.enums import Mode
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,7 +37,12 @@ def _build_config(args, mode, cookies, user=None):
 
 
 def run_recordings(args, mode, cookies):
-    if isinstance(args.user, list):
+    if isinstance(args.user, list) and mode == Mode.AUTOMATIC:
+        # Single process checks all users with small gaps
+        config = _build_config(args, mode, cookies)
+        config.users = args.user
+        record_user(config)
+    elif isinstance(args.user, list):
         processes = []
         for user in args.user:
             config = _build_config(args, mode, cookies, user=user)

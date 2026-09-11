@@ -28,6 +28,7 @@ class TikTokRecorder:
         self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
         self.keep_flv = config.keep_flv
+        self.users = config.users
         self._proxy = config.proxy
         self._cookies = config.cookies
 
@@ -41,6 +42,9 @@ class TikTokRecorder:
                 raise TikTokRecorderError("Failed to retrieve sec_uid.")
 
             logger.info("Followers mode activated\n")
+        elif self.users:
+            self.check_country_blacklisted()
+            logger.info(f"Multi-user automatic mode activated for {len(self.users)} users: {', '.join(self.users)}\n")
         else:
             if self.url:
                 self.user, self.room_id = self.tiktok.get_room_and_user_from_url(
@@ -88,7 +92,10 @@ class TikTokRecorder:
             self.manual_mode()
 
         elif self.mode == Mode.AUTOMATIC:
-            self.automatic_mode()
+            if self.users:
+                self.automatic_mode_multi()
+            else:
+                self.automatic_mode()
 
         elif self.mode == Mode.FOLLOWERS:
             self.followers_mode()
@@ -115,6 +122,29 @@ class TikTokRecorder:
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                 time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+
+    def automatic_mode_multi(self):
+        """Check all users in a loop with small delays, then sleep the full interval."""
+        while True:
+            for user in self.users:
+                try:
+                    self.user = user
+                    self.room_id = self.tiktok.get_room_id_from_user(user)
+                    if self.room_id:
+                        self.manual_mode()
+                except (UserLiveError, LiveNotFound) as ex:
+                    logger.info(ex)
+                except (ConnectionError, RequestException, HTTPException):
+                    logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                    time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                    continue
+
+                time.sleep(TimeOut.USER_CHECK_DELAY)
+
+            logger.info(
+                f"All users checked. Waiting {self.automatic_interval} minutes...\n"
+            )
+            time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
     def followers_mode(self):
         active_recordings = {}  # follower -> Thread

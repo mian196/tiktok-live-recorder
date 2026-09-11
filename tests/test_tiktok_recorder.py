@@ -153,3 +153,45 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
         assert "TK_test_user_" in output_arg
         assert keep_flv_arg is False
 
+
+def test_automatic_mode_multi_checks_all_users():
+    from unittest.mock import patch
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC,
+            users=["user1", "user2"],
+            automatic_interval=1,
+            cookies={},
+        )
+    )
+
+    checked_users = []
+
+    class FakeMultiAPI:
+        def is_country_blacklisted(self):
+            return False
+
+        def get_room_id_from_user(self, u):
+            checked_users.append(u)
+            return "room_" + u
+
+        def is_room_alive(self, r):
+            return False
+
+    recorder.tiktok = FakeMultiAPI()
+    recorder._setup()
+
+    # Run one cycle of automatic_mode_multi and break
+    with patch("time.sleep") as mock_sleep:
+        # Stop after sleeping for the full interval
+        def side_effect(seconds):
+            if seconds == 60:  # 1 min interval
+                raise StopIteration
+        mock_sleep.side_effect = side_effect
+
+        with pytest.raises(StopIteration):
+            recorder.automatic_mode_multi()
+
+    assert checked_users == ["user1", "user2"]
+

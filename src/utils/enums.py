@@ -19,6 +19,7 @@ class TimeOut(IntEnum):
     ONE_MINUTE = 60
     AUTOMATIC_MODE = 5
     CONNECTION_CLOSED = 2
+    USER_CHECK_DELAY = 5
 
 
 class StatusCode(IntEnum):
