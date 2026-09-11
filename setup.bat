@@ -18,14 +18,14 @@ echo.
 :: 1. Verify/Install uv
 where uv >nul 2>&1
 if %errorlevel% neq 0 (
-    set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%PATH%"
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 )
 
 where uv >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] uv not found. Installing uv using PowerShell installer...
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%PATH%"
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
     where uv >nul 2>&1
     if %errorlevel% neq 0 (
         echo [ERROR] Failed to install uv automatically. Please install uv from https://docs.astral.sh/uv/getting-started/installation/

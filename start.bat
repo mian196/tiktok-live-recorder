@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 where uv >nul 2>&1
 if %errorlevel% neq 0 (
-    set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%PATH%"
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 )
 
 if not exist .venv (
