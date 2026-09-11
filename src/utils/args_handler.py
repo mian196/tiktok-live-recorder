@@ -124,6 +124,18 @@ def parse_args():
         ),
     )
 
+    from utils.utils import read_config
+
+    config_defaults = read_config()
+    if "no_update_check" in config_defaults:
+        config_defaults["update_check"] = not bool(config_defaults.pop("no_update_check"))
+
+    # Apply only non-empty values as defaults
+    valid_defaults = {
+        k: v for k, v in config_defaults.items() if v is not None and v != ""
+    }
+    parser.set_defaults(**valid_defaults)
+
     args = parser.parse_args()
 
     return args
@@ -131,6 +143,19 @@ def parse_args():
 
 def validate_and_parse_args():
     args = parse_args()
+
+    if args.user == "":
+        args.user = None
+    if args.url == "":
+        args.url = None
+    if args.room_id == "":
+        args.room_id = None
+    if args.output == "":
+        args.output = None
+    if args.proxy == "":
+        args.proxy = None
+    if args.bitrate == "":
+        args.bitrate = None
 
     if not args.mode:
         raise ArgsParseError(

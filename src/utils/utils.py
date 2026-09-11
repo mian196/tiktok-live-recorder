@@ -45,6 +45,21 @@ def read_telegram_config():
         return json.load(f)
 
 
+def read_config():
+    """
+    Loads the main config.json file and returns it as a dict.
+    """
+    config_path = _get_config_path("config.json")
+    if not os.path.exists(config_path):
+        return {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def is_termux() -> bool:
     """
     Checks if the script is running in Termux.
