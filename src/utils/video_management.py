@@ -23,6 +23,35 @@ class VideoManagement:
         return False
 
     @staticmethod
+    def validate_video_integrity(file_path: str, ffmpeg_path: str = None) -> bool:
+        """
+        Validate that the converted MP4 file exists, has data,
+        and contains a valid playable video stream.
+        """
+        try:
+            path = Path(file_path)
+            if not path.exists() or path.stat().st_size < 1024:
+                return False
+
+            cmd = "ffprobe"
+            if ffmpeg_path:
+                ffprobe_candidate = Path(ffmpeg_path).with_name(
+                    "ffprobe.exe" if os.name == "nt" else "ffprobe"
+                )
+                if ffprobe_candidate.exists():
+                    cmd = str(ffprobe_candidate)
+
+            probe = ffmpeg.probe(str(path), cmd=cmd)
+            streams = probe.get("streams", [])
+            video_streams = [
+                s for s in streams if s.get("codec_type") == "video"
+            ]
+            return len(video_streams) > 0
+        except Exception as e:
+            logger.warning(f"Integrity check failed on {file_path}: {e}")
+            return False
+
+    @staticmethod
     def convert_segments_to_mp4(
         segment_files: list[str],
         output_file: str,
@@ -65,6 +94,7 @@ class VideoManagement:
                 "c": "copy",
                 "y": "-y",
                 "movflags": "+faststart",
+                "avoid_negative_ts": "make_zero",
             }
             if bitrate:
                 output_args["b:v"] = bitrate
@@ -72,10 +102,15 @@ class VideoManagement:
                 output_args["c:a"] = "copy"
                 del output_args["c"]
 
+            copy_success = False
             try:
-                ffmpeg.input(seg_file).output(str(target_path), **output_args).run(
-                    quiet=True, cmd=cmd, capture_stderr=True
-                )
+                ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
+                    str(target_path), **output_args
+                ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                if VideoManagement.validate_video_integrity(str(target_path), ffmpeg_path=cmd):
+                    copy_success = True
+                else:
+                    logger.warning("Stream copy produced incomplete video track. Falling back to transcoding...")
             except ffmpeg.Error as e:
                 err_text = (
                     e.stderr.decode(errors="replace")
@@ -86,16 +121,21 @@ class VideoManagement:
                     f"Stream copy failed ({err_text[:120]}...). "
                     "Retrying with video transcoding to prevent corruption..."
                 )
+
+            if not copy_success:
                 try:
                     fallback_args = {
                         "c:v": "libx264",
                         "c:a": "aac",
+                        "pix_fmt": "yuv420p",
+                        "af": "aresample=async=1000",
                         "y": "-y",
                         "movflags": "+faststart",
+                        "avoid_negative_ts": "make_zero",
                     }
                     if bitrate:
                         fallback_args["b:v"] = bitrate
-                    ffmpeg.input(seg_file).output(
+                    ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
                         str(target_path), **fallback_args
                     ).run(quiet=True, cmd=cmd, capture_stderr=True)
                 except ffmpeg.Error as transcode_err:
@@ -143,6 +183,7 @@ class VideoManagement:
                 "c": "copy",
                 "y": "-y",
                 "movflags": "+faststart",
+                "avoid_negative_ts": "make_zero",
             }
             if bitrate:
                 output_args["b:v"] = bitrate
@@ -150,10 +191,15 @@ class VideoManagement:
                 output_args["c:a"] = "copy"
                 del output_args["c"]
 
+            concat_copy_success = False
             try:
                 ffmpeg.input(str(manifest_file), f="concat", safe=0).output(
                     str(target_path), **output_args
                 ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                if VideoManagement.validate_video_integrity(str(target_path), ffmpeg_path=cmd):
+                    concat_copy_success = True
+                else:
+                    logger.warning("Concat copy produced incomplete video track. Falling back to transcoding...")
             except ffmpeg.Error as e:
                 err_text = (
                     e.stderr.decode(errors="replace")
@@ -164,12 +210,17 @@ class VideoManagement:
                     f"Concat stream copy failed ({err_text[:120]}...). "
                     "Retrying with video transcoding to merge all segments cleanly..."
                 )
+
+            if not concat_copy_success:
                 try:
                     fallback_args = {
                         "c:v": "libx264",
                         "c:a": "aac",
+                        "pix_fmt": "yuv420p",
+                        "af": "aresample=async=1000",
                         "y": "-y",
                         "movflags": "+faststart",
+                        "avoid_negative_ts": "make_zero",
                     }
                     if bitrate:
                         fallback_args["b:v"] = bitrate
