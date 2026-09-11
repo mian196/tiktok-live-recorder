@@ -1,3 +1,4 @@
+import threading
 import time
 from http.client import HTTPException
 from pathlib import Path
@@ -12,6 +13,9 @@ from utils.recorder_config import RecorderConfig
 from utils.video_management import VideoManagement
 from utils.custom_exceptions import LiveNotFound, UserLiveError, TikTokRecorderError
 from utils.enums import Mode, Error, TimeOut, TikTokError
+
+
+_conversion_lock = threading.Lock()
 
 
 class TikTokRecorder:
@@ -340,13 +344,14 @@ class TikTokRecorder:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         logger.info("Recording finished. Processing video...")
-        success = VideoManagement.convert_segments_to_mp4(
-            recorded_segments,
-            final_output,
-            self.bitrate,
-            self.ffmpeg_path,
-            self.keep_flv,
-        )
+        with _conversion_lock:
+            success = VideoManagement.convert_segments_to_mp4(
+                recorded_segments,
+                final_output,
+                self.bitrate,
+                self.ffmpeg_path,
+                self.keep_flv,
+            )
 
         if success:
             self.notify.notify(
