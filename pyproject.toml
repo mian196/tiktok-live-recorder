@@ -47,7 +47,7 @@ line-length = 88
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "--basetemp=output/.test_tmp"]
 testpaths = [
     "tests",
 ]
