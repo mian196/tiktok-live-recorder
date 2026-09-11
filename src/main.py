@@ -12,6 +12,8 @@ def record_user(config):
 
     try:
         TikTokRecorder(config).run()
+    except KeyboardInterrupt:
+        logger.info("Quitting TikTok Live Recorder...")
     except Exception as e:
         logger.error(f"{e}", exc_info=True)
 
@@ -103,6 +105,9 @@ def main():
         # run the recordings based on the parsed arguments
         run_recordings(args, mode, cookies)
 
+    except KeyboardInterrupt:
+        logger.info("Quitting TikTok Live Recorder...")
+
     except TikTokRecorderError as ex:
         logger.error(f"Application Error: {ex}")
         try:
@@ -123,18 +128,21 @@ def main():
 
 
 if __name__ == "__main__":
-    # print the banner
-    from utils.utils import banner
+    try:
+        # print the banner
+        from utils.utils import banner
 
-    banner()
+        banner()
 
-    # check and install dependencies
-    from utils.dependencies import check_and_install_dependencies
+        # check and install dependencies
+        from utils.dependencies import check_and_install_dependencies
 
-    check_and_install_dependencies()
+        check_and_install_dependencies()
 
-    # set up signal handling for graceful shutdown
-    multiprocessing.freeze_support()
+        # set up signal handling for graceful shutdown
+        multiprocessing.freeze_support()
 
-    # run
-    main()
+        # run
+        main()
+    except KeyboardInterrupt:
+        print("\n[*] Quitting TikTok Live Recorder...")
