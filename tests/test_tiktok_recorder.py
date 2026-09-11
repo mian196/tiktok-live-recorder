@@ -135,7 +135,9 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
     fake_api = StreamingFakeAPI()
     recorder.tiktok = fake_api
 
-    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_convert:
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4"
+    ) as mock_convert:
         mock_convert.return_value = True
         recorder.start_recording("test_user", "1234567890")
 
@@ -188,10 +190,10 @@ def test_automatic_mode_multi_checks_all_users():
         def side_effect(seconds):
             if seconds == 60:  # 1 min interval
                 raise StopIteration
+
         mock_sleep.side_effect = side_effect
 
         with pytest.raises(StopIteration):
             recorder.automatic_mode_multi()
 
     assert checked_users == ["user1", "user2"]
-

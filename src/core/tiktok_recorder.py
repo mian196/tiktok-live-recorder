@@ -53,7 +53,9 @@ class TikTokRecorder:
             logger.info("Followers mode activated\n")
         elif self.users:
             self.check_country_blacklisted()
-            logger.info(f"Multi-user automatic mode activated for {len(self.users)} users: {', '.join(self.users)}\n")
+            logger.info(
+                f"Multi-user automatic mode activated for {len(self.users)} users: {', '.join(self.users)}\n"
+            )
         else:
             if self.url:
                 self.user, self.room_id = self.tiktok.get_room_and_user_from_url(
@@ -117,7 +119,7 @@ class TikTokRecorder:
         output_dir = Path(self.output) if self.output else Path(".")
         try:
             usage = shutil.disk_usage(output_dir)
-            free_gb = usage.free / (1024 ** 3)
+            free_gb = usage.free / (1024**3)
         except Exception as e:
             logger.debug(f"Unable to check disk space: {e}")
             return True
@@ -276,7 +278,9 @@ class TikTokRecorder:
         """
         live_urls = self.tiktok.get_live_url_candidates(room_id, user=user)
         if not live_urls:
-            self.notify.notify("recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL))
+            self.notify.notify(
+                "recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL)
+            )
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         final_output = self._build_output_path(user)
@@ -381,7 +385,9 @@ class TikTokRecorder:
                 "Trying another CDN/quality..."
             )
         else:
-            self.notify.notify("recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL))
+            self.notify.notify(
+                "recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL)
+            )
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
         logger.info("Recording finished. Processing video...")

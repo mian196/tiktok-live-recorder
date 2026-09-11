@@ -142,7 +142,12 @@ def check_updates() -> bool:
     extracted_folder = temp_update_dir / "tiktok-live-recorder-main" / "src"
 
     # Copy all files and folders from the extracted folder to the main directory
-    files_to_preserve = {"check_updates.py", "telegram.json", "cookies.json", "config.json"}
+    files_to_preserve = {
+        "check_updates.py",
+        "telegram.json",
+        "cookies.json",
+        "config.json",
+    }
     for item in extracted_folder.iterdir():
         source = item
         destination = dir_path / item.name

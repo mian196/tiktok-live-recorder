@@ -43,7 +43,9 @@ def test_retry_delay_used_on_reconnection():
     slept_durations = []
 
     with (
-        patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_convert,
+        patch(
+            "utils.video_management.VideoManagement.convert_segments_to_mp4"
+        ) as mock_convert,
         patch("time.sleep") as mock_sleep,
     ):
         mock_convert.return_value = True

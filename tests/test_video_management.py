@@ -123,4 +123,3 @@ def test_convert_keeps_flv_when_requested(tmp_path):
         # Both segments must be retained when keep_flv=True
         assert seg1.exists()
         assert seg2.exists()
-

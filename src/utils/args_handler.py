@@ -138,7 +138,9 @@ def parse_args():
 
     config_defaults = read_config()
     if "no_update_check" in config_defaults:
-        config_defaults["update_check"] = not bool(config_defaults.pop("no_update_check"))
+        config_defaults["update_check"] = not bool(
+            config_defaults.pop("no_update_check")
+        )
 
     # Apply only non-empty values as defaults
     valid_defaults = {

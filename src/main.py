@@ -96,6 +96,7 @@ def main():
         cookies = read_cookies()
 
         from notify.notifier import Notifier
+
         notifier = Notifier()
         notifier.notify("app_started", mode=args.mode, interval=args.automatic_interval)
 
@@ -106,6 +107,7 @@ def main():
         logger.error(f"Application Error: {ex}")
         try:
             from notify.notifier import Notifier
+
             Notifier().notify("app_error", error=str(ex))
         except Exception:
             pass
@@ -114,6 +116,7 @@ def main():
         logger.critical(f"Generic Error: {ex}", exc_info=True)
         try:
             from notify.notifier import Notifier
+
             Notifier().notify("app_error", error=str(ex))
         except Exception:
             pass

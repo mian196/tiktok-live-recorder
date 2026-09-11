@@ -43,9 +43,7 @@ class VideoManagement:
 
             probe = ffmpeg.probe(str(path), cmd=cmd)
             streams = probe.get("streams", [])
-            video_streams = [
-                s for s in streams if s.get("codec_type") == "video"
-            ]
+            video_streams = [s for s in streams if s.get("codec_type") == "video"]
             return len(video_streams) > 0
         except Exception as e:
             logger.warning(f"Integrity check failed on {file_path}: {e}")
@@ -107,10 +105,14 @@ class VideoManagement:
                 ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
                     str(target_path), **output_args
                 ).run(quiet=True, cmd=cmd, capture_stderr=True)
-                if VideoManagement.validate_video_integrity(str(target_path), ffmpeg_path=cmd):
+                if VideoManagement.validate_video_integrity(
+                    str(target_path), ffmpeg_path=cmd
+                ):
                     copy_success = True
                 else:
-                    logger.warning("Stream copy produced incomplete video track. Falling back to transcoding...")
+                    logger.warning(
+                        "Stream copy produced incomplete video track. Falling back to transcoding..."
+                    )
             except ffmpeg.Error as e:
                 err_text = (
                     e.stderr.decode(errors="replace")
@@ -196,10 +198,14 @@ class VideoManagement:
                 ffmpeg.input(str(manifest_file), f="concat", safe=0).output(
                     str(target_path), **output_args
                 ).run(quiet=True, cmd=cmd, capture_stderr=True)
-                if VideoManagement.validate_video_integrity(str(target_path), ffmpeg_path=cmd):
+                if VideoManagement.validate_video_integrity(
+                    str(target_path), ffmpeg_path=cmd
+                ):
                     concat_copy_success = True
                 else:
-                    logger.warning("Concat copy produced incomplete video track. Falling back to transcoding...")
+                    logger.warning(
+                        "Concat copy produced incomplete video track. Falling back to transcoding..."
+                    )
             except ffmpeg.Error as e:
                 err_text = (
                     e.stderr.decode(errors="replace")

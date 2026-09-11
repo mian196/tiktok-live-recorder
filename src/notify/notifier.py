@@ -8,7 +8,11 @@ from utils.utils import read_config
 
 class Notifier:
     def __init__(self, config_override: dict = None):
-        cfg = config_override if config_override is not None else read_config().get("notifications", {})
+        cfg = (
+            config_override
+            if config_override is not None
+            else read_config().get("notifications", {})
+        )
         self.enabled = bool(cfg.get("enabled", False))
         self.discord_url = cfg.get("discord_webhook_url", "")
         self.use_telegram = bool(cfg.get("telegram", False))
@@ -122,9 +126,11 @@ class Notifier:
         try:
             if not self._telegram:
                 from upload.telegram import Telegram
+
                 self._telegram = Telegram()
             # Send plain notification message
             import asyncio
+
             async def _send():
                 await self._telegram.client.connect()
                 if not await self._telegram.client.is_user_authorized():
@@ -135,6 +141,7 @@ class Notifier:
                     parse_mode="html",
                 )
                 await self._telegram.client.disconnect()
+
             asyncio.run(_send())
         except Exception as e:
             logger.debug(f"Telegram notification failed: {e}")
@@ -149,7 +156,10 @@ class Notifier:
 
         now = time.time()
         cd_key = self._get_cooldown_key(event, kwargs)
-        if cd_key in self._last_sent and (now - self._last_sent[cd_key]) < self.cooldown:
+        if (
+            cd_key in self._last_sent
+            and (now - self._last_sent[cd_key]) < self.cooldown
+        ):
             return
 
         title, message, color = self._format(event, **kwargs)

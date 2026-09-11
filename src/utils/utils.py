@@ -14,7 +14,9 @@ def banner() -> None:
 def _get_config_path(filename: str) -> str:
     """Find path to a config file, checking configs/ first, then src/."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    primary_path = os.path.abspath(os.path.join(script_dir, "..", "..", "configs", filename))
+    primary_path = os.path.abspath(
+        os.path.join(script_dir, "..", "..", "configs", filename)
+    )
     if os.path.exists(primary_path):
         return primary_path
     legacy_path = os.path.abspath(os.path.join(script_dir, "..", filename))

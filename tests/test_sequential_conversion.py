@@ -51,7 +51,10 @@ def test_conversion_lock_prevents_concurrent_conversions():
             concurrent_runs -= 1
         return True
 
-    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4", side_effect=fake_convert):
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4",
+        side_effect=fake_convert,
+    ):
         t1 = threading.Thread(target=recorder.start_recording, args=("u1", "r1"))
         t2 = threading.Thread(target=recorder.start_recording, args=("u2", "r2"))
         t1.start()

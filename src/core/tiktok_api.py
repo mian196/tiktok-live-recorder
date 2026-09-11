@@ -415,9 +415,7 @@ class TikTokAPI:
 
     def download_live_stream(self, live_url: str):
         """Generator that returns the live stream for a given room_id."""
-        stream = self._http_client_stream.get(
-            live_url, stream=True, timeout=(10, 25)
-        )
+        stream = self._http_client_stream.get(live_url, stream=True, timeout=(10, 25))
         for chunk in stream.iter_content(chunk_size=4096):
             if chunk:
                 yield chunk
