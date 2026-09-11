@@ -112,7 +112,7 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
             self.call_count = 0
             self.alive_checks = 0
 
-        def get_live_url_candidates(self, room_id, user=None, quality="best"):
+        def get_live_url_candidates(self, room_id, user=None):
             return ["http://fake.stream/live.flv"]
 
         def is_room_alive(self, room_id):

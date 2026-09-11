@@ -23,7 +23,7 @@ def test_conversion_lock_prevents_concurrent_conversions():
         def __init__(self):
             self.calls = {}
 
-        def get_live_url_candidates(self, room_id, user=None, quality="best"):
+        def get_live_url_candidates(self, room_id, user=None):
             return ["http://fake.stream/live.flv"]
 
         def is_room_alive(self, room_id):

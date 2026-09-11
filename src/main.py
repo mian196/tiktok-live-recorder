@@ -33,7 +33,6 @@ def _build_config(args, mode, cookies, user=None):
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         keep_flv=args.keep_flv,
-        quality=getattr(args, "quality", "best"),
         retry_delay=getattr(args, "retry_delay", 5),
         disk_space_alert_gb=getattr(args, "disk_space_alert_gb", 5),
     )

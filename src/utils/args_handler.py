@@ -107,14 +107,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "-quality",
-        dest="quality",
-        help="Specify the preferred stream quality (e.g. best, worst, HD1, SD1, FULL_HD1). [Default: best]",
-        default="best",
-        action="store",
-    )
-
-    parser.add_argument(
         "-retry-delay",
         "-retry_delay",
         dest="retry_delay",
@@ -174,8 +166,6 @@ def validate_and_parse_args():
         args.proxy = None
     if args.bitrate == "":
         args.bitrate = None
-    if not getattr(args, "quality", None) or args.quality == "":
-        args.quality = "best"
 
     if not args.mode:
         raise ArgsParseError(

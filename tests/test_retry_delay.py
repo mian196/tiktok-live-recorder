@@ -24,7 +24,7 @@ def test_retry_delay_used_on_reconnection():
         def __init__(self):
             self.calls = 0
 
-        def get_live_url_candidates(self, room_id, user=None, quality="best"):
+        def get_live_url_candidates(self, room_id, user=None):
             return ["http://fake.stream/live.flv"]
 
         def is_room_alive(self, room_id):
