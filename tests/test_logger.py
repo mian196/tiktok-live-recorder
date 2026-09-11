@@ -15,3 +15,4 @@ def test_logger_has_rotating_file_handler():
     assert handler.maxBytes == 5 * 1024 * 1024
     assert handler.backupCount == 3
     assert handler.level == logging.DEBUG
+    assert "output" in handler.baseFilename and "logs" in handler.baseFilename

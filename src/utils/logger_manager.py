@@ -51,8 +51,19 @@ class LoggerManager:
 
             # 3) File handler — DEBUG level, includes full stack traces
             #    Rotates at 5 MB, keeps 3 backups
+            #    Stored in output/logs/
+            from pathlib import Path
+
+            script_dir = Path(__file__).resolve().parents[2]
+            log_dir = script_dir / "output" / "logs"
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log_file = log_dir / "tiktok-recorder.log"
+            except OSError:
+                log_file = Path("tiktok-recorder.log")
+
             file_handler = RotatingFileHandler(
-                "tiktok-recorder.log",
+                str(log_file),
                 maxBytes=5 * 1024 * 1024,
                 backupCount=3,
                 encoding="utf-8",

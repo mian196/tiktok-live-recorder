@@ -55,6 +55,9 @@ echo [INFO] Configuring local directories and template configuration files...
 if not exist configs (
     mkdir configs
 )
+if not exist "output\logs" (
+    mkdir "output\logs"
+)
 
 :: Create configs/config.json template if not exists
 if not exist configs\config.json (
