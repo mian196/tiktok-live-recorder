@@ -107,6 +107,14 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-keep-flv",
+        "--keep-flv",
+        dest="keep_flv",
+        action="store_true",
+        help="Keep the raw FLV recording files alongside the converted MP4 file.",
+    )
+
+    parser.add_argument(
         "-no-update-check",
         dest="update_check",
         action="store_false",

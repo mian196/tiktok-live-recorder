@@ -204,3 +204,19 @@ def test_automatic_interval_less_than_one(monkeypatch):
         match="Incorrect automatic_interval value. Must be one minute or more.",
     ):
         validate_and_parse_args()
+
+
+def test_keep_flv_argument(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-user",
+            "test",
+            "-keep-flv",
+        ],
+    )
+    args, mode = validate_and_parse_args()
+    assert args.keep_flv is True
+    assert mode == Mode.MANUAL

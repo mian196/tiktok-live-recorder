@@ -27,6 +27,7 @@ class TikTokRecorder:
         self.bitrate = config.bitrate
         self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
+        self.keep_flv = config.keep_flv
         self._proxy = config.proxy
         self._cookies = config.cookies
 
@@ -178,7 +179,7 @@ class TikTokRecorder:
 
     def _build_output_path(self, user: str) -> str:
         filename = (
-            f"TK_{user}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}_flv.mp4"
+            f"TK_{user}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
         )
         if self.output:
             return str(Path(self.output) / filename)
@@ -192,7 +193,8 @@ class TikTokRecorder:
         if not live_urls:
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
-        output = self._build_output_path(user)
+        final_output = self._build_output_path(user)
+        base_stem = Path(final_output).with_suffix("")
 
         min_stream_bytes = 4096
         for index, live_url in enumerate(live_urls, start=1):
@@ -205,76 +207,102 @@ class TikTokRecorder:
                 logger.info(f"Started recording (stream {index}/{len(live_urls)})...")
 
             buffer_size = 512 * 1024  # 512 KB buffer
-            buffer = bytearray()
-            bytes_written = 0
+            recorded_segments = []
+            part_index = 1
+            total_bytes_written = 0
 
             logger.info("[PRESS CTRL + C ONCE TO STOP]")
-            with open(output, "wb") as out_file:
-                stop_recording = False
-                stream_ended = False
-                while not stop_recording:
-                    try:
-                        if not self.tiktok.is_room_alive(room_id):
-                            logger.info("User is no longer live. Stopping recording.")
-                            break
+            stop_recording = False
+            start_time = time.time()
 
-                        start_time = time.time()
-                        for chunk in self.tiktok.download_live_stream(live_url):
-                            buffer.extend(chunk)
-                            bytes_written += len(chunk)
-                            if len(buffer) >= buffer_size:
+            while not stop_recording:
+                # Check room status before attempting connection/reconnection
+                if not self.tiktok.is_room_alive(room_id):
+                    logger.info("User is no longer live. Stopping recording.")
+                    break
+
+                segment_path = f"{base_stem}_part{part_index}.flv"
+                segment_bytes = 0
+                buffer = bytearray()
+
+                try:
+                    with open(segment_path, "wb") as out_file:
+                        try:
+                            for chunk in self.tiktok.download_live_stream(live_url):
+                                buffer.extend(chunk)
+                                segment_bytes += len(chunk)
+                                total_bytes_written += len(chunk)
+                                if len(buffer) >= buffer_size:
+                                    out_file.write(buffer)
+                                    buffer.clear()
+
+                                elapsed_time = time.time() - start_time
+                                if self.duration and elapsed_time >= self.duration:
+                                    stop_recording = True
+                                    break
+                            else:
+                                if not self.tiktok.is_room_alive(room_id):
+                                    logger.info(
+                                        "User is no longer live. Stopping recording."
+                                    )
+                                    stop_recording = True
+                        finally:
+                            if buffer:
                                 out_file.write(buffer)
                                 buffer.clear()
+                            out_file.flush()
 
-                            elapsed_time = time.time() - start_time
-                            if self.duration and elapsed_time >= self.duration:
-                                stop_recording = True
-                                break
-                        else:
-                            stream_ended = True
+                except ConnectionError:
+                    if self.mode == Mode.AUTOMATIC:
+                        logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                        time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                except (RequestException, HTTPException, OSError) as ex:
+                    logger.warning(f"Network hiccup, retrying: {ex}")
+                    time.sleep(2)
+                except KeyboardInterrupt:
+                    logger.info("Recording stopped by user.")
+                    stop_recording = True
+                except Exception as ex:
+                    logger.error(
+                        f"Unexpected error during recording: {ex}",
+                        exc_info=True,
+                    )
+                    stop_recording = True
 
-                        if stream_ended and bytes_written < min_stream_bytes:
-                            break
-
-                    except ConnectionError:
-                        if self.mode == Mode.AUTOMATIC:
-                            logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                            time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
-
-                    except (RequestException, HTTPException) as ex:
-                        logger.warning(f"Network hiccup, retrying: {ex}")
+                if segment_bytes >= min_stream_bytes:
+                    recorded_segments.append(segment_path)
+                    part_index += 1
+                else:
+                    Path(segment_path).unlink(missing_ok=True)
+                    if not stop_recording and segment_bytes == 0:
                         time.sleep(2)
 
-                    except KeyboardInterrupt:
-                        logger.info("Recording stopped by user.")
-                        stop_recording = True
-
-                    except Exception as ex:
-                        logger.error(
-                            f"Unexpected error during recording: {ex}",
-                            exc_info=True,
-                        )
-                        stop_recording = True
-
-                    finally:
-                        if buffer:
-                            out_file.write(buffer)
-                            buffer.clear()
-                        out_file.flush()
-
-            if bytes_written >= min_stream_bytes:
+            if total_bytes_written >= min_stream_bytes and recorded_segments:
                 break
 
             logger.warning(
-                f"Stream {index}/{len(live_urls)} returned only {bytes_written} bytes. "
+                f"Stream {index}/{len(live_urls)} returned only {total_bytes_written} bytes. "
                 "Trying another CDN/quality..."
             )
         else:
-            Path(output).unlink(missing_ok=True)
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
 
-        logger.info(f"Recording finished: {Path(output).resolve()}\n")
-        VideoManagement.convert_flv_to_mp4(output, self.bitrate, self.ffmpeg_path)
+        logger.info("Recording finished. Processing video...")
+        success = VideoManagement.convert_segments_to_mp4(
+            recorded_segments,
+            final_output,
+            self.bitrate,
+            self.ffmpeg_path,
+            self.keep_flv,
+        )
+
+        if success and self.use_telegram:
+            try:
+                from upload.telegram import Telegram
+
+                Telegram().upload(final_output)
+            except Exception as e:
+                logger.error(f"Telegram upload failed: {e}")
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

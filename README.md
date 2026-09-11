@@ -122,6 +122,7 @@ uv run python src/main.py [options]
 | `-proxy <URL>` | HTTP proxy to bypass regional restrictions. |
 | `-bitrate <BITRATE>` | Output bitrate for post-processing (e.g. `1M`, `1000k`). |
 | `-telegram` | Upload the recording to Telegram when done. Requires `telegram.json`. |
+| `-keep-flv` | Keep the raw FLV recording files alongside the converted MP4 file. |
 | `-no-update-check` | Skip the automatic update check on startup. |
 
 ### Recording Modes

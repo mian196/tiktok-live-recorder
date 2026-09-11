@@ -97,3 +97,59 @@ def test_setup_keeps_manual_room_id_allowed_when_country_check_is_blocked():
         "is_country_blacklisted",
         "is_room_alive:1234567890",
     ]
+
+
+def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
+    from unittest.mock import patch
+    import requests
+
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.MANUAL, user="test_user", output=str(tmp_path))
+    )
+
+    class StreamingFakeAPI:
+        def __init__(self):
+            self.call_count = 0
+            self.alive_checks = 0
+
+        def get_live_url_candidates(self, room_id, user=None):
+            return ["http://fake.stream/live.flv"]
+
+        def is_room_alive(self, room_id):
+            self.alive_checks += 1
+            # Alive during stream 1 and stream 2, then offline to finish recording
+            return self.alive_checks <= 3
+
+        def download_live_stream(self, live_url):
+            self.call_count += 1
+            if self.call_count == 1:
+                # Yield 5KB of data then raise network hiccup
+                yield b"X" * 5120
+                raise requests.exceptions.ChunkedEncodingError("Connection dropped")
+            elif self.call_count == 2:
+                # Yield 5KB on reconnection then end stream
+                yield b"Y" * 5120
+            else:
+                return
+
+    fake_api = StreamingFakeAPI()
+    recorder.tiktok = fake_api
+
+    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_convert:
+        mock_convert.return_value = True
+        recorder.start_recording("test_user", "1234567890")
+
+        assert mock_convert.called
+        (
+            segments_arg,
+            output_arg,
+            bitrate_arg,
+            ffmpeg_arg,
+            keep_flv_arg,
+        ) = mock_convert.call_args[0]
+        # Should have captured 2 separate segments
+        assert len(segments_arg) == 2
+        assert output_arg.endswith(".mp4")
+        assert "TK_test_user_" in output_arg
+        assert keep_flv_arg is False
+
