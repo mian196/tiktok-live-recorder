@@ -115,6 +115,16 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-retry-delay",
+        "-retry_delay",
+        dest="retry_delay",
+        help="Sets the connection retry delay in seconds. [Default: 5]",
+        type=int,
+        default=5,
+        action="store",
+    )
+
+    parser.add_argument(
         "-keep-flv",
         "--keep-flv",
         dest="keep_flv",

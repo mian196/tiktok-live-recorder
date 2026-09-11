@@ -20,3 +20,4 @@ class RecorderConfig:
     ffmpeg_path: str | None = None
     keep_flv: bool = False
     quality: str = "best"
+    retry_delay: int = 5

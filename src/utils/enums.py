@@ -18,7 +18,7 @@ class TimeOut(IntEnum):
 
     ONE_MINUTE = 60
     AUTOMATIC_MODE = 5
-    CONNECTION_CLOSED = 2
+    CONNECTION_CLOSED = 5
     USER_CHECK_DELAY = 5
 
 
@@ -47,7 +47,7 @@ class Error(Enum):
         return str(self.value)
 
     CONNECTION_CLOSED = "Connection broken by the server."
-    CONNECTION_CLOSED_AUTOMATIC = f"{CONNECTION_CLOSED}. Try again after delay of {TimeOut.CONNECTION_CLOSED} minutes"
+    CONNECTION_CLOSED_AUTOMATIC = f"{CONNECTION_CLOSED}. Retrying connection..."
 
 
 class TikTokError(Enum):

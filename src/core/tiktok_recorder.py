@@ -31,6 +31,7 @@ class TikTokRecorder:
         self.use_telegram = config.use_telegram
         self.keep_flv = config.keep_flv
         self.quality = getattr(config, "quality", "best")
+        self.retry_delay = getattr(config, "retry_delay", 5)
         self.users = config.users
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -126,7 +127,7 @@ class TikTokRecorder:
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                time.sleep(self.retry_delay)
 
     def automatic_mode_multi(self):
         """Check all users in a loop with small delays, then sleep the full interval."""
@@ -142,7 +143,7 @@ class TikTokRecorder:
                     logger.info(ex)
                 except (ConnectionError, RequestException, HTTPException):
                     logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                    time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                    time.sleep(self.retry_delay)
                     continue
 
                 time.sleep(TimeOut.USER_CHECK_DELAY)
@@ -212,7 +213,7 @@ class TikTokRecorder:
 
             except (ConnectionError, RequestException, HTTPException):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                time.sleep(self.retry_delay)
 
     def _build_output_path(self, user: str) -> str:
         filename = (
@@ -304,10 +305,10 @@ class TikTokRecorder:
                 except ConnectionError:
                     if self.mode == Mode.AUTOMATIC:
                         logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                        time.sleep(TimeOut.CONNECTION_CLOSED * TimeOut.ONE_MINUTE)
+                        time.sleep(self.retry_delay)
                 except (RequestException, HTTPException, OSError) as ex:
                     logger.warning(f"Network hiccup, retrying: {ex}")
-                    time.sleep(2)
+                    time.sleep(self.retry_delay)
                 except KeyboardInterrupt:
                     logger.info("Recording stopped by user.")
                     stop_recording = True

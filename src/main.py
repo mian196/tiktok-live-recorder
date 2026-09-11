@@ -34,6 +34,7 @@ def _build_config(args, mode, cookies, user=None):
         ffmpeg_path=args.ffmpeg_path,
         keep_flv=args.keep_flv,
         quality=getattr(args, "quality", "best"),
+        retry_delay=getattr(args, "retry_delay", 5),
     )
 
 
