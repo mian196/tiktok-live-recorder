@@ -1,3 +1,4 @@
+import shutil
 import threading
 import time
 from http.client import HTTPException
@@ -36,6 +37,7 @@ class TikTokRecorder:
         self.keep_flv = config.keep_flv
         self.quality = getattr(config, "quality", "best")
         self.retry_delay = getattr(config, "retry_delay", 5)
+        self.disk_space_alert_gb = getattr(config, "disk_space_alert_gb", 5)
         self.users = config.users
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -108,7 +110,37 @@ class TikTokRecorder:
         elif self.mode == Mode.FOLLOWERS:
             self.followers_mode()
 
+    def _check_disk_space(self, user: str = None) -> bool:
+        """Return True if disk has enough space, False if below threshold."""
+        if self.disk_space_alert_gb <= 0:
+            return True
+
+        output_dir = Path(self.output) if self.output else Path(".")
+        try:
+            usage = shutil.disk_usage(output_dir)
+            free_gb = usage.free / (1024 ** 3)
+        except Exception as e:
+            logger.debug(f"Unable to check disk space: {e}")
+            return True
+
+        if free_gb < self.disk_space_alert_gb:
+            logger.warning(
+                f"Low disk space: {free_gb:.1f} GB free (threshold: {self.disk_space_alert_gb} GB)."
+            )
+            self.notify.notify(
+                "low_disk_space",
+                user=user or self.user or "recorder",
+                free_gb=round(free_gb, 1),
+                threshold=self.disk_space_alert_gb,
+            )
+            return False
+        return True
+
     def manual_mode(self):
+        if not self._check_disk_space(self.user):
+            logger.warning("Recording aborted — low disk space.")
+            return
+
         if not self.tiktok.is_room_alive(self.room_id):
             raise UserLiveError(f"@{self.user}: {TikTokError.USER_NOT_CURRENTLY_LIVE}")
 
@@ -117,6 +149,11 @@ class TikTokRecorder:
     def automatic_mode(self):
         while True:
             try:
+                if not self._check_disk_space(self.user):
+                    logger.warning("Skipping recording check — low disk space.")
+                    time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
+                    continue
+
                 self.room_id = self.tiktok.get_room_id_from_user(self.user)
                 if self.room_id and self.tiktok.is_room_alive(self.room_id):
                     self.notify.notify("live_detected", user=self.user)
@@ -136,6 +173,11 @@ class TikTokRecorder:
     def automatic_mode_multi(self):
         """Check all users in a loop with small delays, then sleep the full interval."""
         while True:
+            if not self._check_disk_space():
+                logger.warning("Skipping recording check — low disk space.")
+                time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
+                continue
+
             for user in self.users:
                 try:
                     self.user = user

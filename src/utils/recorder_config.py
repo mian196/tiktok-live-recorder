@@ -21,3 +21,4 @@ class RecorderConfig:
     keep_flv: bool = False
     quality: str = "best"
     retry_delay: int = 5
+    disk_space_alert_gb: int = 5
