@@ -140,3 +140,10 @@ dmypy.json
 
 .idea/
 .vscode/
+
+# Config files
+configs/*
+!configs/.gitkeep
+
+# Output directory
+output/

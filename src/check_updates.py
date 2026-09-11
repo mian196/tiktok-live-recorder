@@ -142,15 +142,18 @@ def check_updates() -> bool:
     extracted_folder = temp_update_dir / "tiktok-live-recorder-main" / "src"
 
     # Copy all files and folders from the extracted folder to the main directory
-    files_to_preserve = {"check_updates.py", "telegram.json"}
+    files_to_preserve = {"check_updates.py", "telegram.json", "cookies.json", "config.json"}
     for item in extracted_folder.iterdir():
         source = item
         destination = dir_path / item.name
 
-        # Merge cookies.json so user session values are kept but new keys are
-        # picked up from the updated version.
+        # Merge cookies.json into configs/cookies.json if it exists
         if source.name == "cookies.json":
-            _merge_cookies(destination, source)
+            configs_cookie_path = dir_path.parent / "configs" / "cookies.json"
+            if configs_cookie_path.exists():
+                _merge_cookies(configs_cookie_path, source)
+            elif destination.exists():
+                _merge_cookies(destination, source)
             continue
 
         # Skip overwriting the files we want to preserve

@@ -11,13 +11,26 @@ def banner() -> None:
     print(Info.BANNER, flush=True)
 
 
+def _get_config_path(filename: str) -> str:
+    """Find path to a config file, checking configs/ first, then src/."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    primary_path = os.path.abspath(os.path.join(script_dir, "..", "..", "configs", filename))
+    if os.path.exists(primary_path):
+        return primary_path
+    legacy_path = os.path.abspath(os.path.join(script_dir, "..", filename))
+    if os.path.exists(legacy_path):
+        return legacy_path
+    return primary_path
+
+
 def read_cookies():
     """
-    Loads the config file and returns it.
+    Loads the cookies config file and returns it.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, "..", "cookies.json")
-    with open(config_path, "r") as f:
+    config_path = _get_config_path("cookies.json")
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -25,9 +38,10 @@ def read_telegram_config():
     """
     Loads the telegram config file and returns it.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(script_dir, "..", "telegram.json")
-    with open(config_path, "r") as f:
+    config_path = _get_config_path("telegram.json")
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
