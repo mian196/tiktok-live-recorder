@@ -287,7 +287,7 @@ class TikTokAPI:
 
         return followers
 
-    def _get_stream_url_from_page(self, user: str) -> str | None:
+    def _get_stream_url_from_page(self, user: str, quality: str = "best") -> str | None:
         """
         Fallback: fetch the live page HTML and extract the stream URL directly.
         Used when the webcast API returns status code 4003110 (WAF/access restriction).
@@ -299,16 +299,26 @@ class TikTokAPI:
 
             flv_matches = re.findall(r'https?://[^\s"\'<>]+\.flv[^\s"\'<>]*', content)
             if flv_matches:
-                # Prefer original (_or4) or SD quality
-                for url in flv_matches:
-                    url = html.unescape(url.rstrip("\\"))
-                    if "_or4" in url or "_sd" in url:
-                        logger.info(f"Found stream URL from page: {url[:80]}...")
-                        return url
-                return html.unescape(flv_matches[0].rstrip("\\"))
+                if quality == "worst":
+                    for url in flv_matches:
+                        url_clean = html.unescape(url.rstrip("\\"))
+                        if "_sd" in url_clean or "_ld" in url_clean:
+                            logger.info(f"Found lowest quality stream URL from page: {url_clean[:80]}...")
+                            return url_clean
+                    return html.unescape(flv_matches[-1].rstrip("\\"))
+                else:
+                    # Prefer original (_or4) or standard quality
+                    for url in flv_matches:
+                        url_clean = html.unescape(url.rstrip("\\"))
+                        if "_or4" in url_clean or "_hd" in url_clean:
+                            logger.info(f"Found stream URL from page: {url_clean[:80]}...")
+                            return url_clean
+                    return html.unescape(flv_matches[0].rstrip("\\"))
 
             hls_matches = re.findall(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', content)
             if hls_matches:
+                if quality == "worst":
+                    return html.unescape(hls_matches[-1].rstrip("\\"))
                 return html.unescape(hls_matches[0].rstrip("\\"))
 
             return None
@@ -320,7 +330,7 @@ class TikTokAPI:
         if url and url not in candidates:
             candidates.append(url)
 
-    def get_live_urls(self, room_id: str, user: str = None) -> list[str]:
+    def get_live_urls(self, room_id: str, user: str = None, quality: str = "best") -> list[str]:
         """
         Return candidate CDN URLs (flv or m3u8) for the streaming.
         If the API returns status code 4003110 and a username is provided,
@@ -340,7 +350,7 @@ class TikTokAPI:
                 logger.info(
                     "API blocked by WAF (4003110). Trying fallback: extract stream URL from live page..."
                 )
-                fallback_url = self._get_stream_url_from_page(user)
+                fallback_url = self._get_stream_url_from_page(user, quality=quality)
                 if fallback_url:
                     return [fallback_url]
 
@@ -359,12 +369,18 @@ class TikTokAPI:
             .get("stream_data")
         )
         candidates = []
+        flv_pull_url = stream_url.get("flv_pull_url", {})
+        legacy_keys = ["FULL_HD1", "HD1", "SD2", "SD1"]
+        if quality == "worst":
+            legacy_keys = list(reversed(legacy_keys))
+        elif quality in legacy_keys:
+            legacy_keys = [quality] + [k for k in legacy_keys if k != quality]
+
         if not sdk_data_str:
             logger.warning(
                 "No SDK stream data found. Falling back to legacy URLs. Consider contacting the developer to update the code."
             )
-            flv_pull_url = stream_url.get("flv_pull_url", {})
-            for key in ("FULL_HD1", "HD1", "SD2", "SD1"):
+            for key in legacy_keys:
                 self._add_live_url_candidate(candidates, flv_pull_url.get(key))
             self._add_live_url_candidate(candidates, stream_url.get("hls_pull_url"))
             self._add_live_url_candidate(candidates, stream_url.get("rtmp_pull_url"))
@@ -383,9 +399,24 @@ class TikTokAPI:
             return candidates
         level_map = {q["sdk_key"]: q["level"] for q in qualities}
 
-        ordered_sdk_keys = sorted(
-            sdk_data.keys(), key=lambda key: level_map.get(key, -1), reverse=True
-        )
+        if quality == "best":
+            ordered_sdk_keys = sorted(
+                sdk_data.keys(), key=lambda key: level_map.get(key, -1), reverse=True
+            )
+        elif quality == "worst":
+            ordered_sdk_keys = sorted(
+                sdk_data.keys(), key=lambda key: level_map.get(key, -1)
+            )
+        elif quality in level_map:
+            preferred = [quality] if quality in sdk_data else []
+            others = [k for k in sdk_data.keys() if k != quality]
+            others.sort(key=lambda key: level_map.get(key, -1), reverse=True)
+            ordered_sdk_keys = preferred + others
+        else:
+            ordered_sdk_keys = sorted(
+                sdk_data.keys(), key=lambda key: level_map.get(key, -1), reverse=True
+            )
+
         for sdk_key in ordered_sdk_keys:
             entry = sdk_data[sdk_key]
             stream_main = entry.get("main", {})
@@ -394,24 +425,23 @@ class TikTokAPI:
                 candidates, stream_main.get("hls") or stream_main.get("m3u8")
             )
 
-        flv_pull_url = stream_url.get("flv_pull_url", {})
-        for key in ("FULL_HD1", "HD1", "SD2", "SD1"):
+        for key in legacy_keys:
             self._add_live_url_candidate(candidates, flv_pull_url.get(key))
         self._add_live_url_candidate(candidates, stream_url.get("hls_pull_url"))
         self._add_live_url_candidate(candidates, stream_url.get("rtmp_pull_url"))
 
         return candidates
 
-    def get_live_url(self, room_id: str, user: str = None) -> str | None:
+    def get_live_url(self, room_id: str, user: str = None, quality: str = "best") -> str | None:
         """Return the first candidate CDN URL for the streaming."""
-        live_urls = self.get_live_urls(room_id, user=user)
+        live_urls = self.get_live_urls(room_id, user=user, quality=quality)
         if live_urls:
             return live_urls[0]
         return None
 
-    def get_live_url_candidates(self, room_id: str, user: str = None) -> list[str]:
+    def get_live_url_candidates(self, room_id: str, user: str = None, quality: str = "best") -> list[str]:
         """Return candidate CDN URLs for the streaming."""
-        return self.get_live_urls(room_id, user=user)
+        return self.get_live_urls(room_id, user=user, quality=quality)
 
     def download_live_stream(self, live_url: str):
         """Generator that returns the live stream for a given room_id."""

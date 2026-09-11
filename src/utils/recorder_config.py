@@ -19,3 +19,4 @@ class RecorderConfig:
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     keep_flv: bool = False
+    quality: str = "best"

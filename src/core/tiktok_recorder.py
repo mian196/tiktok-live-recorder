@@ -30,6 +30,7 @@ class TikTokRecorder:
         self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
         self.keep_flv = config.keep_flv
+        self.quality = getattr(config, "quality", "best")
         self.users = config.users
         self._proxy = config.proxy
         self._cookies = config.cookies
@@ -225,7 +226,9 @@ class TikTokRecorder:
         """
         Start recording live
         """
-        live_urls = self.tiktok.get_live_url_candidates(room_id, user=user)
+        live_urls = self.tiktok.get_live_url_candidates(
+            room_id, user=user, quality=self.quality
+        )
         if not live_urls:
             self.notify.notify("recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL))
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
