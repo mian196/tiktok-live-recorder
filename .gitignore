@@ -142,7 +142,8 @@ dmypy.json
 .vscode/
 
 # Config files
-configs/*
+configs/*.json
+!configs/*.example.json
 !configs/.gitkeep
 
 # Output directory

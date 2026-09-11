@@ -58,65 +58,33 @@ if not exist configs (
 
 :: Create configs/config.json template if not exists
 if not exist configs\config.json (
-    (
-        echo {
-        echo   "user": "",
-        echo   "url": "",
-        echo   "room_id": "",
-        echo   "mode": "manual",
-        echo   "automatic_interval": 5,
-        echo   "output": "output",
-        echo   "duration": null,
-        echo   "proxy": "",
-        echo   "telegram": false,
-        echo   "bitrate": "",
-        echo   "quality": "best",
-        echo   "retry_delay": 5,
-        echo   "disk_space_alert_gb": 5,
-        echo   "keep_flv": false,
-        echo   "no_update_check": false,
-        echo   "notifications": {
-        echo     "enabled": false,
-        echo     "discord_webhook_url": "",
-        echo     "telegram": false,
-        echo     "cooldown_seconds": 30,
-        echo     "events": {
-        echo       "live_detected": true,
-        echo       "recording_started": true,
-        echo       "recording_finished": true,
-        echo       "recording_failed": true,
-        echo       "user_offline": true,
-        echo       "app_started": true,
-        echo       "app_error": true,
-        echo       "low_disk_space": true
-        echo     }
-        echo   }
-        echo }
-    ) > configs\config.json
-    echo [SUCCESS] Created template in configs/config.json.
+    if exist configs\config.example.json (
+        copy configs\config.example.json configs\config.json >nul
+        echo [SUCCESS] Created configs/config.json from template.
+    )
 ) else (
     echo [INFO] Config file already exists in configs/config.json.
 )
 
 :: Create configs/cookies.json template if not exists
 if not exist configs\cookies.json (
-    echo {} > configs\cookies.json
-    echo [SUCCESS] Created template in configs/cookies.json.
+    if exist configs\cookies.example.json (
+        copy configs\cookies.example.json configs\cookies.json >nul
+        echo [SUCCESS] Created configs/cookies.json from template.
+    ) else (
+        echo {} > configs\cookies.json
+        echo [SUCCESS] Created template in configs/cookies.json.
+    )
 ) else (
     echo [INFO] Cookies file already exists in configs/cookies.json.
 )
 
 :: Create configs/telegram.json template if not exists
 if not exist configs\telegram.json (
-    (
-        echo {
-        echo   "api_id": "",
-        echo   "api_hash": "",
-        echo   "session": "",
-        echo   "chat_id": ""
-        echo }
-    ) > configs\telegram.json
-    echo [SUCCESS] Created template in configs/telegram.json.
+    if exist configs\telegram.example.json (
+        copy configs\telegram.example.json configs\telegram.json >nul
+        echo [SUCCESS] Created configs/telegram.json from template.
+    )
 ) else (
     echo [INFO] Telegram config already exists in configs/telegram.json.
 )

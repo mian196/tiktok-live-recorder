@@ -1,0 +1,33 @@
+{
+  "user": "",
+  "url": "",
+  "room_id": "",
+  "mode": "manual",
+  "automatic_interval": 5,
+  "output": "output",
+  "duration": null,
+  "proxy": "",
+  "telegram": false,
+  "bitrate": "",
+  "quality": "best",
+  "retry_delay": 5,
+  "disk_space_alert_gb": 5,
+  "keep_flv": false,
+  "no_update_check": false,
+  "notifications": {
+    "enabled": false,
+    "discord_webhook_url": "",
+    "telegram": false,
+    "cooldown_seconds": 30,
+    "events": {
+      "live_detected": true,
+      "recording_started": true,
+      "recording_finished": true,
+      "recording_failed": true,
+      "user_offline": true,
+      "app_started": true,
+      "app_error": true,
+      "low_disk_space": true
+    }
+  }
+}
