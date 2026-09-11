@@ -11,6 +11,7 @@ from core.tiktok_api import TikTokAPI
 from notify.notifier import Notifier
 from utils.logger_manager import logger
 from utils.recorder_config import RecorderConfig
+from utils.status_bar import RecordingStatusBar
 from utils.video_management import VideoManagement
 from utils.custom_exceptions import LiveNotFound, UserLiveError, TikTokRecorderError
 from utils.enums import Mode, Error, TimeOut, TikTokError
@@ -311,10 +312,12 @@ class TikTokRecorder:
             logger.info("[PRESS CTRL + C ONCE TO STOP]")
             stop_recording = False
             start_time = time.time()
+            status_bar = RecordingStatusBar(user=user, part=part_index)
 
             while not stop_recording:
                 # Check room status before attempting connection/reconnection
                 if not self.tiktok.is_room_alive(room_id):
+                    status_bar.clear()
                     logger.info("User is no longer live. Stopping recording.")
                     self.notify.notify("user_offline", user=user)
                     break
@@ -330,6 +333,7 @@ class TikTokRecorder:
                                 buffer.extend(chunk)
                                 segment_bytes += len(chunk)
                                 total_bytes_written += len(chunk)
+                                status_bar.update(total_bytes_written, part=part_index)
                                 if len(buffer) >= buffer_size:
                                     out_file.write(buffer)
                                     buffer.clear()
@@ -340,6 +344,7 @@ class TikTokRecorder:
                                     break
                             else:
                                 if not self.tiktok.is_room_alive(room_id):
+                                    status_bar.clear()
                                     logger.info(
                                         "User is no longer live. Stopping recording."
                                     )
@@ -352,16 +357,20 @@ class TikTokRecorder:
                             out_file.flush()
 
                 except ConnectionError:
+                    status_bar.clear()
                     if self.mode == Mode.AUTOMATIC:
                         logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
                         time.sleep(self.retry_delay)
                 except (RequestException, HTTPException, OSError) as ex:
+                    status_bar.clear()
                     logger.warning(f"Network hiccup, retrying: {ex}")
                     time.sleep(self.retry_delay)
                 except KeyboardInterrupt:
+                    status_bar.clear()
                     logger.info("Recording stopped by user.")
                     stop_recording = True
                 except Exception as ex:
+                    status_bar.clear()
                     logger.error(
                         f"Unexpected error during recording: {ex}",
                         exc_info=True,
@@ -376,6 +385,8 @@ class TikTokRecorder:
                     Path(segment_path).unlink(missing_ok=True)
                     if not stop_recording and segment_bytes == 0:
                         time.sleep(2)
+
+            status_bar.finish()
 
             if total_bytes_written >= min_stream_bytes and recorded_segments:
                 break
