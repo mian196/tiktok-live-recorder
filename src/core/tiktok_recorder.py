@@ -265,7 +265,7 @@ class TikTokRecorder:
 
     def _build_output_path(self, user: str) -> str:
         filename = (
-            f"TK_{user}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
+            f"{user}-{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}.mp4"
         )
         if self.output:
             output_dir = Path(self.output) / user
@@ -322,7 +322,7 @@ class TikTokRecorder:
                     self.notify.notify("user_offline", user=user)
                     break
 
-                segment_path = f"{base_stem}_part{part_index}.flv"
+                segment_path = f"{base_stem}-part{part_index}.flv"
                 segment_bytes = 0
                 buffer = bytearray()
 

@@ -21,12 +21,12 @@ def manage_test_output_environment():
         shutil.rmtree(test_tmp_dir, ignore_errors=True)
 
     # Teardown: Remove any stray test FLV or MP4 files created in the project root
-    for stray_file in root_dir.glob("TK_*.flv"):
+    for stray_file in root_dir.glob("*.flv"):
         try:
             stray_file.unlink()
         except OSError:
             pass
-    for stray_file in root_dir.glob("TK_*.mp4"):
+    for stray_file in root_dir.glob("*-*.mp4"):
         try:
             stray_file.unlink()
         except OSError:

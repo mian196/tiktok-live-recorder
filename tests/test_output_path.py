@@ -22,7 +22,7 @@ def test_build_output_path_creates_user_subdirectory(tmp_path):
 
     assert out_path.parent == tmp_path / "streamer_xyz"
     assert out_path.parent.is_dir()
-    assert out_path.name.startswith("TK_streamer_xyz_")
+    assert out_path.name.startswith("streamer_xyz-")
     assert out_path.suffix == ".mp4"
 
 
@@ -36,5 +36,5 @@ def test_build_output_path_without_output_dir():
     )
 
     path_str = recorder._build_output_path("streamer_xyz")
-    assert path_str.startswith("TK_streamer_xyz_")
+    assert path_str.startswith("streamer_xyz-")
     assert path_str.endswith(".mp4")

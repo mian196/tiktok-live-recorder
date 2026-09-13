@@ -152,7 +152,7 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
         # Should have captured 2 separate segments
         assert len(segments_arg) == 2
         assert output_arg.endswith(".mp4")
-        assert "TK_test_user_" in output_arg
+        assert "test_user-" in output_arg
         assert keep_flv_arg is False
 
 
