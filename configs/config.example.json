@@ -1,5 +1,11 @@
 {
-  "user": "",
+  "user": [
+    {
+      "username": "example_streamer1",
+      "sec_uid": "",
+      "user_id": ""
+    }
+  ],
   "url": "",
   "room_id": "",
   "mode": "manual",
