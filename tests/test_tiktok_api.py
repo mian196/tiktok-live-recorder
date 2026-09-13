@@ -22,7 +22,7 @@ class FakeHttpClient:
         self.responses = responses
         self.urls = []
 
-    def get(self, url):
+    def get(self, url, **kwargs):
         self.urls.append(url)
         return FakeResponse(self.responses.pop(0))
 
@@ -173,3 +173,17 @@ def test_get_live_url_candidates_returns_ordered_unique_streams():
         "https://cdn/audio.flv",
         "https://cdn/sd.flv",
     ]
+
+
+def test_is_room_alive_handles_dns_and_network_exceptions():
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.WEBCAST_URL = "https://webcast.tiktok.com"
+
+    class FailingClient:
+        def get(self, *args, **kwargs):
+            raise Exception("Could not resolve host: webcast.tiktok.com")
+
+    api.http_client = FailingClient()
+    # Must not raise an exception; must return False gracefully
+    assert api.is_room_alive("123") is False
+

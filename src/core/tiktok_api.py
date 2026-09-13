@@ -46,50 +46,60 @@ class TikTokAPI:
         if not room_id:
             raise UserLiveError(TikTokError.USER_NOT_CURRENTLY_LIVE)
 
-        alive_data = self.http_client.get(
-            f"{self.WEBCAST_URL}/webcast/room/check_alive/"
-            f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true"
-        ).json()
+        try:
+            alive_resp = self.http_client.get(
+                f"{self.WEBCAST_URL}/webcast/room/check_alive/"
+                f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true",
+                timeout=10,
+            )
+            alive_data = alive_resp.json()
 
-        data_list = alive_data.get("data")
-        if (
-            not isinstance(data_list, list)
-            or not data_list
-            or not isinstance(data_list[0], dict)
-            or not data_list[0].get("alive", False)
-        ):
+            data_list = alive_data.get("data")
+            if (
+                not isinstance(data_list, list)
+                or not data_list
+                or not isinstance(data_list[0], dict)
+                or not data_list[0].get("alive", False)
+            ):
+                return False
+
+            room_resp = self.http_client.get(
+                f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}",
+                timeout=10,
+            )
+            room_info = room_resp.json()
+
+            status_code = room_info.get("status_code", 0)
+            if status_code == 4003110:
+                return True
+
+            if status_code != 0:
+                return False
+
+            room_data = room_info.get("data") or {}
+            room_status = room_data.get("status")
+            if room_status is not None and str(room_status) != "2":
+                return False
+
+            stream_url = room_data.get("stream_url") or {}
+            sdk_stream_data = (
+                (stream_url.get("live_core_sdk_data") or {})
+                .get("pull_data", {})
+                .get("stream_data")
+            )
+
+            return bool(
+                sdk_stream_data
+                or stream_url.get("flv_pull_url")
+                or stream_url.get("hls_pull_url")
+                or stream_url.get("hls_pull_url_map")
+                or stream_url.get("rtmp_pull_url")
+            )
+        except UserLiveError:
+            raise
+        except Exception as e:
+            logger.debug(f"is_room_alive network check failed for room {room_id}: {e}")
             return False
-
-        room_info = self.http_client.get(
-            f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}"
-        ).json()
-
-        status_code = room_info.get("status_code", 0)
-        if status_code == 4003110:
-            return True
-
-        if status_code != 0:
-            return False
-
-        room_data = room_info.get("data") or {}
-        room_status = room_data.get("status")
-        if room_status is not None and str(room_status) != "2":
-            return False
-
-        stream_url = room_data.get("stream_url") or {}
-        sdk_stream_data = (
-            (stream_url.get("live_core_sdk_data") or {})
-            .get("pull_data", {})
-            .get("stream_data")
-        )
-
-        return bool(
-            sdk_stream_data
-            or stream_url.get("flv_pull_url")
-            or stream_url.get("hls_pull_url")
-            or stream_url.get("hls_pull_url_map")
-            or stream_url.get("rtmp_pull_url")
-        )
 
     def get_user_info(self, user: str) -> dict | None:
         """

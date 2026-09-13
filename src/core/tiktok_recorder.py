@@ -290,8 +290,11 @@ class TikTokRecorder:
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except (ConnectionError, RequestException, HTTPException):
-                logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+            except (ConnectionError, RequestException, HTTPException) as ex:
+                logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
+                time.sleep(self.retry_delay)
+            except Exception as ex:
+                logger.warning(f"Unexpected error in automatic mode: {ex}. Retrying in {self.retry_delay}s...")
                 time.sleep(self.retry_delay)
 
     def automatic_mode_multi(self):
@@ -323,8 +326,12 @@ class TikTokRecorder:
                         self.manual_mode()
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)
-                except (ConnectionError, RequestException, HTTPException):
-                    logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                except (ConnectionError, RequestException, HTTPException) as ex:
+                    logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
+                    time.sleep(self.retry_delay)
+                    continue
+                except Exception as ex:
+                    logger.warning(f"Temporary check error for @{self.user}: {ex}. Retrying next check.")
                     time.sleep(self.retry_delay)
                     continue
 

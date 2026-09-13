@@ -7,15 +7,27 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def record_user(config):
+    import time
     from core.tiktok_recorder import TikTokRecorder
     from utils.logger_manager import logger
 
-    try:
-        TikTokRecorder(config).run()
-    except KeyboardInterrupt:
-        logger.info("Quitting TikTok Live Recorder...")
-    except Exception as e:
-        logger.error(f"{e}", exc_info=True)
+    while True:
+        try:
+            TikTokRecorder(config).run()
+            break
+        except KeyboardInterrupt:
+            logger.info("Quitting TikTok Live Recorder...")
+            break
+        except Exception as e:
+            if config.mode == Mode.AUTOMATIC:
+                logger.error(
+                    f"Unexpected error in automatic mode: {e}. Retrying in {config.retry_delay}s...",
+                    exc_info=True,
+                )
+                time.sleep(config.retry_delay)
+            else:
+                logger.error(f"{e}", exc_info=True)
+                break
 
 
 def _build_config(args, mode, cookies, user=None):
