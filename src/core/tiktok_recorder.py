@@ -15,6 +15,8 @@ from utils.status_bar import RecordingStatusBar
 from utils.video_management import VideoManagement
 from utils.custom_exceptions import LiveNotFound, UserLiveError, TikTokRecorderError
 from utils.enums import Mode, Error, TimeOut, TikTokError
+from utils.user_identity import TrackedUser, parse_tracked_users
+from utils.utils import update_tracked_users_in_config
 
 
 _conversion_lock = threading.Lock()
@@ -42,6 +44,103 @@ class TikTokRecorder:
         self._proxy = config.proxy
         self._cookies = config.cookies
 
+        # Self-healing tracked users
+        self.tracked_users: list[TrackedUser] = config.tracked_users or []
+        if not self.tracked_users:
+            if config.users:
+                self.tracked_users = parse_tracked_users(config.users)
+            elif config.user:
+                self.tracked_users = parse_tracked_users(config.user)
+
+    def _save_tracked_users_to_config(self):
+        """Persists current tracked user objects (with resolved sec_uid / user_id) to config.json."""
+        try:
+            if self.tracked_users:
+                update_tracked_users_in_config(self.tracked_users)
+                self.users = [u.username for u in self.tracked_users]
+        except Exception as e:
+            logger.debug(f"Failed to update config.json with tracked users: {e}")
+
+    def _sync_and_resolve_user(self, user_obj: TrackedUser) -> TrackedUser:
+        """
+        Auto-resolves missing sec_uid / user_id from username and persists to config.json.
+        """
+        if not user_obj.sec_uid and user_obj.username:
+            try:
+                info = self.tiktok.get_user_info(user_obj.username)
+                if info and info.get("sec_uid"):
+                    user_obj.sec_uid = info["sec_uid"]
+                    user_obj.user_id = info.get("user_id")
+                    logger.info(
+                        f"[*] [ID-RESOLVE] Auto-discovered permanent ID for @{user_obj.username} "
+                        f"(sec_uid: {user_obj.sec_uid[:16]}...) -> saved to configs/config.json"
+                    )
+                    self._save_tracked_users_to_config()
+            except Exception as e:
+                logger.debug(f"Failed to resolve ID for @{user_obj.username}: {e}")
+
+        return user_obj
+
+    def _check_and_recover_user_handle(
+        self, user_obj: TrackedUser
+    ) -> tuple[TrackedUser, str | None]:
+        """
+        Attempts to get the room_id for the user.
+        If username lookup fails/changed and sec_uid exists:
+        - Resolves current handle via permanent sec_uid.
+        - If handle changed: updates user_obj, logs change, and updates config.json.
+        - If sec_uid failed: tries to repair ID from current username.
+        """
+        room_id = None
+        try:
+            room_id = self.tiktok.get_room_id_from_user(user_obj.username)
+        except (UserLiveError, LiveNotFound, TikTokRecorderError):
+            pass
+
+        if room_id:
+            return user_obj, room_id
+
+        # Room ID not found or error. Check if username changed using permanent sec_uid
+        if user_obj.sec_uid:
+            try:
+                profile_by_sec = self.tiktok.get_user_by_sec_uid(user_obj.sec_uid)
+                if profile_by_sec and profile_by_sec.get("username"):
+                    current_name = profile_by_sec["username"]
+                    if current_name.lower() != user_obj.username.lower():
+                        old_name = user_obj.username
+                        user_obj.username = current_name
+                        if profile_by_sec.get("user_id"):
+                            user_obj.user_id = profile_by_sec["user_id"]
+                        logger.info(
+                            f"[*] [HANDLE-CHANGE] Detected username change: @{old_name} -> @{current_name}. "
+                            "Updated configs/config.json"
+                        )
+                        self._save_tracked_users_to_config()
+                        # Retry room lookup with new username
+                        try:
+                            room_id = self.tiktok.get_room_id_from_user(user_obj.username)
+                        except Exception:
+                            pass
+                        return user_obj, room_id
+            except Exception as e:
+                logger.debug(f"Failed handle recovery for {user_obj.username} via sec_uid: {e}")
+
+        # Check if sec_uid might be invalid / outdated for this username
+        try:
+            fresh_info = self.tiktok.get_user_info(user_obj.username)
+            if fresh_info and fresh_info.get("sec_uid") and fresh_info.get("sec_uid") != user_obj.sec_uid:
+                user_obj.sec_uid = fresh_info["sec_uid"]
+                user_obj.user_id = fresh_info.get("user_id")
+                logger.warning(
+                    f"[!] [ID-REPAIR] Outdated or invalid ID for @{user_obj.username} corrected from live profile. "
+                    "Updated configs/config.json"
+                )
+                self._save_tracked_users_to_config()
+        except Exception as e:
+            logger.debug(f"Failed ID repair for {user_obj.username}: {e}")
+
+        return user_obj, room_id
+
     def _setup(self):
         """Resolve user/room data and validate prerequisites via network calls."""
         if self.mode == Mode.FOLLOWERS:
@@ -54,10 +153,19 @@ class TikTokRecorder:
             logger.info("Followers mode activated\n")
         elif self.users:
             self.check_country_blacklisted()
+            # Auto-resolve IDs on startup if missing
+            if self.tracked_users:
+                for idx, u in enumerate(self.tracked_users):
+                    self.tracked_users[idx] = self._sync_and_resolve_user(u)
+                self.users = [u.username for u in self.tracked_users]
             logger.info(
                 f"Multi-user automatic mode activated for {len(self.users)} users: {', '.join(self.users)}\n"
             )
         else:
+            if self.tracked_users:
+                self.tracked_users[0] = self._sync_and_resolve_user(self.tracked_users[0])
+                self.user = self.tracked_users[0].username
+
             if self.url:
                 self.user, self.room_id = self.tiktok.get_room_and_user_from_url(
                     self.url
@@ -67,7 +175,13 @@ class TikTokRecorder:
                 self.user = self.tiktok.get_user_from_room_id(self.room_id)
 
             if not self.room_id:
-                self.room_id = self.tiktok.get_room_id_from_user(self.user)
+                if self.tracked_users:
+                    self.tracked_users[0], self.room_id = self._check_and_recover_user_handle(
+                        self.tracked_users[0]
+                    )
+                    self.user = self.tracked_users[0].username
+                else:
+                    self.room_id = self.tiktok.get_room_id_from_user(self.user)
 
             self.check_country_blacklisted()
 
@@ -156,10 +270,18 @@ class TikTokRecorder:
                     time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
                     continue
 
-                self.room_id = self.tiktok.get_room_id_from_user(self.user)
+                if self.tracked_users:
+                    self.tracked_users[0] = self._sync_and_resolve_user(self.tracked_users[0])
+                    self.tracked_users[0], self.room_id = self._check_and_recover_user_handle(
+                        self.tracked_users[0]
+                    )
+                    self.user = self.tracked_users[0].username
+                else:
+                    self.room_id = self.tiktok.get_room_id_from_user(self.user)
+
                 if self.room_id and self.tiktok.is_room_alive(self.room_id):
                     self.notify.notify("live_detected", user=self.user)
-                self.manual_mode()
+                    self.manual_mode()
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
@@ -180,12 +302,24 @@ class TikTokRecorder:
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
                 continue
 
-            for user in self.users:
+            target_list = (
+                self.tracked_users
+                if self.tracked_users
+                else [TrackedUser(username=u) for u in self.users]
+            )
+
+            for idx, user_obj in enumerate(target_list):
                 try:
-                    self.user = user
-                    self.room_id = self.tiktok.get_room_id_from_user(user)
+                    user_obj = self._sync_and_resolve_user(user_obj)
+                    user_obj, room_id = self._check_and_recover_user_handle(user_obj)
+                    if self.tracked_users and idx < len(self.tracked_users):
+                        self.tracked_users[idx] = user_obj
+
+                    self.user = user_obj.username
+                    self.room_id = room_id
+
                     if self.room_id and self.tiktok.is_room_alive(self.room_id):
-                        self.notify.notify("live_detected", user=user)
+                        self.notify.notify("live_detected", user=self.user)
                         self.manual_mode()
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)

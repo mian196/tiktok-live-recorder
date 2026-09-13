@@ -21,9 +21,12 @@ def record_user(config):
 def _build_config(args, mode, cookies, user=None):
     from utils.recorder_config import RecorderConfig
 
+    tracked_users = getattr(args, "tracked_users", None)
     return RecorderConfig(
         url=args.url,
         user=user,
+        users=args.user if isinstance(args.user, list) else None,
+        tracked_users=tracked_users,
         room_id=args.room_id,
         mode=mode,
         automatic_interval=args.automatic_interval,

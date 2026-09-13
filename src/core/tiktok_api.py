@@ -91,6 +91,96 @@ class TikTokAPI:
             or stream_url.get("rtmp_pull_url")
         )
 
+    def get_user_info(self, user: str) -> dict | None:
+        """
+        Fetches user profile information (unique_id, sec_uid, user_id) from TikTok.
+        """
+        clean_user = user.lstrip("@").strip()
+        try:
+            response = self.http_client.get(
+                f"{self.BASE_URL}/@{clean_user}",
+                allow_redirects=True,
+                headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+            )
+            if response.status_code != StatusCode.OK:
+                return None
+
+            content = response.text
+
+            # Try parsing __UNIVERSAL_DATA_FOR_REHYDRATION__ script tag
+            json_match = re.search(
+                r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>',
+                content,
+                re.DOTALL,
+            )
+            if json_match:
+                try:
+                    rehydrated = json.loads(json_match.group(1))
+                    default_scope = rehydrated.get("__DEFAULT_SCOPE__", {})
+                    user_detail = default_scope.get("webapp.user-detail", {})
+                    user_data = user_detail.get("userInfo", {}).get("user", {})
+                    if user_data:
+                        uid = user_data.get("uniqueId") or clean_user
+                        sec_uid = user_data.get("secUid")
+                        user_id = user_data.get("id")
+                        if sec_uid:
+                            return {
+                                "username": uid,
+                                "sec_uid": sec_uid,
+                                "user_id": str(user_id) if user_id else None,
+                            }
+                except Exception:
+                    pass
+
+            # Regex fallback
+            sec_uid_match = re.search(r'"secUid":"([^"]+)"', content)
+            user_id_match = re.search(r'"userId":"(\d+)"|"id":"(\d+)"', content)
+            unique_id_match = re.search(r'"uniqueId":"([^"]+)"', content)
+
+            sec_uid = sec_uid_match.group(1) if sec_uid_match else None
+            user_id = (user_id_match.group(1) or user_id_match.group(2)) if user_id_match else None
+            unique_id = unique_id_match.group(1) if unique_id_match else clean_user
+
+            if sec_uid:
+                return {
+                    "username": unique_id,
+                    "sec_uid": sec_uid,
+                    "user_id": str(user_id) if user_id else None,
+                }
+        except Exception as e:
+            logger.debug(f"Failed to fetch user info for @{user}: {e}")
+
+        return None
+
+    def get_user_by_sec_uid(self, sec_uid: str) -> dict | None:
+        """
+        Given a sec_uid, resolves the current active username and user_id by following
+        the permanent /share/user/{sec_uid} redirect or querying user profile.
+        """
+        if not sec_uid:
+            return None
+        try:
+            # TikTok /share/user/{sec_uid} redirects to the active /@{current_username}
+            share_url = f"{self.BASE_URL}/share/user/{sec_uid}"
+            response = self.http_client.get(share_url, allow_redirects=True)
+
+            final_url = str(response.url)
+            match = re.search(r"tiktok\.com/@([^/?#&]+)", final_url)
+            if match:
+                current_username = match.group(1)
+                info = self.get_user_info(current_username)
+                if info and info.get("sec_uid") == sec_uid:
+                    return info
+                return {
+                    "username": current_username,
+                    "sec_uid": sec_uid,
+                    "user_id": None,
+                }
+        except Exception as e:
+            logger.debug(f"Failed to resolve user by sec_uid {sec_uid}: {e}")
+
+        return None
+
     def get_sec_uid(self):
         """
         Returns the sec_uid of the authenticated user.

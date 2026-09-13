@@ -3,6 +3,7 @@ import re
 
 from utils.custom_exceptions import ArgsParseError
 from utils.enums import Mode, Regex
+from utils.user_identity import parse_tracked_users
 
 
 def parse_args():
@@ -178,16 +179,22 @@ def validate_and_parse_args():
             "Incorrect mode value. Choose between 'manual', 'automatic' or 'followers'."
         )
 
+    raw_user_input = args.user or getattr(args, "users", None)
+    args.tracked_users = parse_tracked_users(raw_user_input)
+
+    if args.tracked_users:
+        usernames = [u.username for u in args.tracked_users]
+        args.user = usernames if len(usernames) > 1 else usernames[0]
+    else:
+        args.user = None
+
     if args.mode in ["manual", "automatic"]:
         if not args.user and not args.room_id and not args.url:
             raise ArgsParseError(
                 "Missing URL, username, or room ID. Please provide one of these parameters."
             )
 
-    if args.user:
-        args.user = [u.lstrip("@").strip() for u in args.user.split(",") if u.strip()]
-
-    if args.user and len(args.user) > 1 and (args.room_id or args.url):
+    if args.user and isinstance(args.user, list) and len(args.user) > 1 and (args.room_id or args.url):
         raise ArgsParseError(
             "When using multiple usernames, do not provide room_id or url."
         )
@@ -200,17 +207,6 @@ def validate_and_parse_args():
     if (
         (args.user and args.room_id)
         or (args.user and args.url)
-        or (args.room_id and args.url)
-    ):
-        raise ArgsParseError("Please provide only one among username, room ID, or URL.")
-
-    # Edit: now arg.user is a list
-    if args.user and len(args.user) == 1:
-        args.user = args.user[0]
-
-    if (
-        (isinstance(args.user, str) and args.user and args.room_id)
-        or (isinstance(args.user, str) and args.user and args.url)
         or (args.room_id and args.url)
     ):
         raise ArgsParseError("Please provide only one among username, room ID, or URL.")

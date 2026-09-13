@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from utils.enums import Mode
+from utils.user_identity import TrackedUser
 
 
 @dataclass
@@ -9,6 +10,7 @@ class RecorderConfig:
     url: str | None = None
     user: str | None = None
     users: list[str] | None = None
+    tracked_users: list[TrackedUser] | None = None
     room_id: str | None = None
     automatic_interval: int = 5
     cookies: dict | None = None

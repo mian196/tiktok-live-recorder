@@ -38,7 +38,7 @@ def isolate_cli_tests(request, monkeypatch):
     """
     Isolate CLI unit tests from user-specific local config.json entries.
     """
-    if "test_config" not in request.node.nodeid:
+    if "test_config" not in request.node.nodeid and "test_user_identity" not in request.node.nodeid:
         monkeypatch.setattr("utils.utils.read_config", lambda: {})
 
 

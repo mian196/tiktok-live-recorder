@@ -148,3 +148,6 @@ configs/*.json
 
 # Output directory
 output/
+
+# CodeGraph
+.codegraph/

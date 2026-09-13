@@ -62,6 +62,48 @@ def read_config():
         return {}
 
 
+def save_config(config_dict: dict) -> bool:
+    """
+    Saves config_dict to config.json atomically to prevent corrupted files on crash.
+    """
+    config_path = _get_config_path("config.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    temp_path = f"{config_path}.tmp.{os.getpid()}"
+    try:
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(config_dict, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(temp_path, config_path)
+        return True
+    except Exception:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        return False
+
+
+def update_tracked_users_in_config(tracked_users: list) -> bool:
+    """
+    Updates the 'user' / 'users' field in config.json with enriched TrackedUser dicts.
+    """
+    cfg = read_config()
+    if not cfg:
+        return False
+
+    users_data = [u.to_dict() if hasattr(u, "to_dict") else u for u in tracked_users]
+
+    if "users" in cfg:
+        cfg["users"] = users_data
+    elif len(users_data) == 1 and "user" in cfg and isinstance(cfg["user"], (str, dict)) and not (isinstance(cfg["user"], str) and "," in cfg["user"]):
+        cfg["user"] = users_data[0]
+    else:
+        cfg["user"] = users_data
+
+    return save_config(cfg)
+
+
 def is_termux() -> bool:
     """
     Checks if the script is running in Termux.
