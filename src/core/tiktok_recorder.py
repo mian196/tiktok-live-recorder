@@ -290,11 +290,15 @@ class TikTokRecorder:
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except (ConnectionError, RequestException, HTTPException) as ex:
+            except (ConnectionError, RequestException, HTTPException, OSError) as ex:
                 logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
+                self.tiktok.reset_session()
                 time.sleep(self.retry_delay)
             except Exception as ex:
-                logger.warning(f"Unexpected error in automatic mode: {ex}. Retrying in {self.retry_delay}s...")
+                logger.warning(
+                    f"Unexpected error in automatic mode: {ex}. Retrying in {self.retry_delay}s..."
+                )
+                self.tiktok.reset_session()
                 time.sleep(self.retry_delay)
 
     def automatic_mode_multi(self):
@@ -326,12 +330,16 @@ class TikTokRecorder:
                         self.manual_mode()
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)
-                except (ConnectionError, RequestException, HTTPException) as ex:
+                except (ConnectionError, RequestException, HTTPException, OSError) as ex:
                     logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
+                    self.tiktok.reset_session()
                     time.sleep(self.retry_delay)
                     continue
                 except Exception as ex:
-                    logger.warning(f"Temporary check error for @{self.user}: {ex}. Retrying next check.")
+                    logger.warning(
+                        f"Temporary check error for @{self.user}: {ex}. Retrying next check."
+                    )
+                    self.tiktok.reset_session()
                     time.sleep(self.retry_delay)
                     continue
 
@@ -400,9 +408,24 @@ class TikTokRecorder:
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except (ConnectionError, RequestException, HTTPException):
+            except (ConnectionError, RequestException, HTTPException, OSError):
                 logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+                self.tiktok.reset_session()
                 time.sleep(self.retry_delay)
+
+    def _verify_room_status(self, room_id: str) -> tuple[bool, bool]:
+        if hasattr(self.tiktok, "verify_room_status"):
+            return self.tiktok.verify_room_status(room_id)
+        if hasattr(self.tiktok, "is_room_alive"):
+            return self.tiktok.is_room_alive(room_id), True
+        return False, False
+
+    def _reset_session_if_available(self):
+        if hasattr(self.tiktok, "reset_session"):
+            try:
+                self.tiktok.reset_session()
+            except Exception as e:
+                logger.debug(f"Error resetting session: {e}")
 
     def _build_output_path(self, user: str) -> str:
         filename = (
@@ -456,12 +479,21 @@ class TikTokRecorder:
             status_bar = RecordingStatusBar(user=user, part=part_index)
 
             while not stop_recording:
-                # Check room status before attempting connection/reconnection
-                if not self.tiktok.is_room_alive(room_id):
+                # Check room status before starting / resuming stream chunk
+                is_alive, is_confirmed = self._verify_room_status(room_id)
+                if is_confirmed and not is_alive:
                     status_bar.clear()
                     logger.info("User is no longer live. Stopping recording.")
                     self.notify.notify("user_offline", user=user)
                     break
+                elif not is_confirmed:
+                    status_bar.clear()
+                    logger.warning(
+                        "Network connection interrupted (e.g. VPN switch). Waiting to reconnect..."
+                    )
+                    self._reset_session_if_available()
+                    time.sleep(self.retry_delay)
+                    continue
 
                 segment_path = f"{base_stem}-part{part_index}.flv"
                 segment_bytes = 0
@@ -484,13 +516,27 @@ class TikTokRecorder:
                                     stop_recording = True
                                     break
                             else:
-                                if not self.tiktok.is_room_alive(room_id):
+                                # Stream generator completed (stream rotated or connection severed)
+                                is_alive, is_confirmed = self._verify_room_status(room_id)
+                                if is_confirmed and not is_alive:
                                     status_bar.clear()
                                     logger.info(
                                         "User is no longer live. Stopping recording."
                                     )
                                     self.notify.notify("user_offline", user=user)
                                     stop_recording = True
+                                else:
+                                    status_bar.clear()
+                                    logger.info(
+                                        "Stream connection ended. Refreshing live stream URL and resuming recording..."
+                                    )
+                                    self._reset_session_if_available()
+                                    try:
+                                        fresh_urls = self.tiktok.get_live_urls(room_id, user=user)
+                                        if fresh_urls:
+                                            live_url = fresh_urls[0]
+                                    except Exception:
+                                        pass
                         finally:
                             if buffer:
                                 out_file.write(buffer)
@@ -499,13 +545,31 @@ class TikTokRecorder:
 
                 except ConnectionError:
                     status_bar.clear()
-                    if self.mode == Mode.AUTOMATIC:
-                        logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
-                        time.sleep(self.retry_delay)
+                    logger.warning(
+                        "Connection lost. Resetting network session and resuming recording..."
+                    )
+                    self._reset_session_if_available()
+                    time.sleep(self.retry_delay)
+                    try:
+                        fresh_urls = self.tiktok.get_live_urls(room_id, user=user)
+                        if fresh_urls:
+                            live_url = fresh_urls[0]
+                    except Exception:
+                        pass
                 except (RequestException, HTTPException, OSError) as ex:
                     status_bar.clear()
-                    logger.warning(f"Network hiccup, retrying: {ex}")
+                    logger.warning(
+                        f"Network interruption ({ex}). Resetting session and resuming recording..."
+                    )
+                    self._reset_session_if_available()
                     time.sleep(self.retry_delay)
+                    try:
+                        fresh_urls = self.tiktok.get_live_urls(room_id, user=user)
+                        if fresh_urls:
+                            live_url = fresh_urls[0]
+                    except Exception:
+                        pass
+
                 except KeyboardInterrupt:
                     status_bar.clear()
                     logger.info("Recording stopped by user.")
@@ -525,7 +589,7 @@ class TikTokRecorder:
                 else:
                     Path(segment_path).unlink(missing_ok=True)
                     if not stop_recording and segment_bytes == 0:
-                        time.sleep(2)
+                        time.sleep(self.retry_delay)
 
             status_bar.finish()
 
@@ -541,6 +605,10 @@ class TikTokRecorder:
                 "recording_failed", user=user, error=str(TikTokError.RETRIEVE_LIVE_URL)
             )
             raise LiveNotFound(TikTokError.RETRIEVE_LIVE_URL)
+
+        if not recorded_segments:
+            logger.warning("No valid stream segments captured.")
+            return
 
         logger.info("Recording finished. Processing video...")
         with _conversion_lock:

@@ -54,6 +54,24 @@ class HttpClient:
 
         self.check_proxy()
 
+    def close(self) -> None:
+        """Close open sessions and release resources."""
+        if self.req is not None:
+            try:
+                self.req.close()
+            except Exception:
+                pass
+        if self.req_stream is not None:
+            try:
+                self.req_stream.close()
+            except Exception:
+                pass
+
+    def reset(self) -> None:
+        """Close old connections and re-initialize fresh sessions for new network routes/DNS."""
+        self.close()
+        self.configure_session()
+
     def check_proxy(self) -> None:
         if self.proxy is None:
             return
@@ -66,3 +84,4 @@ class HttpClient:
         if response.status_code == StatusCode.OK:
             self.req.proxies.update(proxies)
             logger.info("Proxy set up successfully")
+

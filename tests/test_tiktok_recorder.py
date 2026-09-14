@@ -197,3 +197,67 @@ def test_automatic_mode_multi_checks_all_users():
             recorder.automatic_mode_multi()
 
     assert checked_users == ["user1", "user2"]
+
+
+def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
+    from unittest.mock import patch
+    import requests
+
+    recorder = TikTokRecorder(
+        RecorderConfig(mode=Mode.MANUAL, user="vpn_user", output=str(tmp_path), retry_delay=0.01)
+    )
+
+    class VPNToggleFakeAPI:
+        def __init__(self):
+            self.session_resets = 0
+            self.status_checks = 0
+            self.stream_calls = 0
+
+        def reset_session(self):
+            self.session_resets += 1
+
+        def get_live_url_candidates(self, room_id, user=None):
+            return ["http://cdn.tiktok/live.flv"]
+
+        def get_live_urls(self, room_id, user=None):
+            return ["http://cdn.tiktok/live_refreshed.flv"]
+
+        def verify_room_status(self, room_id):
+            self.status_checks += 1
+            if self.status_checks == 1:
+                # Initial check: online
+                return True, True
+            elif self.status_checks == 2:
+                # During VPN switch: unconfirmed / network outage
+                return False, False
+            elif self.status_checks == 3:
+                # Reconnected to internet: online again
+                return True, True
+            else:
+                # Finally stream finishes naturally
+                return False, True
+
+        def download_live_stream(self, live_url):
+            self.stream_calls += 1
+            if self.stream_calls == 1:
+                # Send data then drop connection (VPN toggled)
+                yield b"V" * 5000
+                raise requests.exceptions.ConnectionError("VPN switched off")
+            elif self.stream_calls == 2:
+                # Resumed stream chunk
+                yield b"W" * 5000
+            else:
+                return
+
+    fake_api = VPNToggleFakeAPI()
+    recorder.tiktok = fake_api
+
+    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_convert:
+        mock_convert.return_value = True
+        recorder.start_recording("vpn_user", "room_999")
+
+        assert mock_convert.called
+        segments_arg = mock_convert.call_args[0][0]
+        assert len(segments_arg) == 2
+        assert fake_api.session_resets >= 1
+

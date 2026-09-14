@@ -1,6 +1,7 @@
 import html
 import json
 import re
+import time
 
 from http_utils.http_client import HttpClient
 from utils.enums import StatusCode, TikTokError
@@ -21,8 +22,29 @@ class TikTokAPI:
         self.EULER_API = "https://tiktok.eulerstream.com"
         self.TIKREC_API = "https://tikrec.com"
 
-        self.http_client = HttpClient(proxy, cookies).req
-        self._http_client_stream = HttpClient(proxy, cookies).req_stream
+        self._proxy = proxy
+        self._cookies = cookies
+        self._client_wrapper = HttpClient(proxy, cookies)
+        self.http_client = self._client_wrapper.req
+        self._http_client_stream = self._client_wrapper.req_stream
+
+    def reset_session(self) -> None:
+        """
+        Recreates HTTP client sessions to flush stale sockets and DNS caches
+        when network routes change (e.g. VPN toggled on/off).
+        """
+        try:
+            if hasattr(self, "_client_wrapper") and self._client_wrapper is not None:
+                self._client_wrapper.reset()
+                self.http_client = self._client_wrapper.req
+                self._http_client_stream = self._client_wrapper.req_stream
+            elif hasattr(self, "_proxy"):
+                self._client_wrapper = HttpClient(self._proxy, getattr(self, "_cookies", None))
+                self.http_client = self._client_wrapper.req
+                self._http_client_stream = self._client_wrapper.req_stream
+        except Exception as e:
+            logger.debug(f"Error resetting HTTP sessions: {e}")
+
 
     def _is_authenticated(self) -> bool:
         response = self.http_client.get(f"{self.BASE_URL}/foryou")
@@ -39,67 +61,87 @@ class TikTokAPI:
 
         return response.status_code == StatusCode.REDIRECT
 
-    def is_room_alive(self, room_id: str) -> bool:
+    def verify_room_status(self, room_id: str, retries: int = 2) -> tuple[bool, bool]:
         """
-        Checking whether the user is live.
+        Check whether the room is live.
+        Returns:
+            (is_alive: bool, is_confirmed: bool)
+            - (True, True): Confirmed live with active stream data.
+            - (False, True): Confirmed offline by TikTok server.
+            - (False, False): Unable to reach TikTok servers (network/DNS failure).
         """
         if not room_id:
             raise UserLiveError(TikTokError.USER_NOT_CURRENTLY_LIVE)
 
-        try:
-            alive_resp = self.http_client.get(
-                f"{self.WEBCAST_URL}/webcast/room/check_alive/"
-                f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true",
-                timeout=10,
-            )
-            alive_data = alive_resp.json()
+        for attempt in range(retries + 1):
+            try:
+                alive_resp = self.http_client.get(
+                    f"{self.WEBCAST_URL}/webcast/room/check_alive/"
+                    f"?aid=1988&region=CH&room_ids={room_id}&user_is_login=true",
+                    timeout=10,
+                )
+                alive_data = alive_resp.json()
 
-            data_list = alive_data.get("data")
-            if (
-                not isinstance(data_list, list)
-                or not data_list
-                or not isinstance(data_list[0], dict)
-                or not data_list[0].get("alive", False)
-            ):
-                return False
+                data_list = alive_data.get("data")
+                if (
+                    not isinstance(data_list, list)
+                    or not data_list
+                    or not isinstance(data_list[0], dict)
+                    or not data_list[0].get("alive", False)
+                ):
+                    return False, True
 
-            room_resp = self.http_client.get(
-                f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}",
-                timeout=10,
-            )
-            room_info = room_resp.json()
+                room_resp = self.http_client.get(
+                    f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}",
+                    timeout=10,
+                )
+                room_info = room_resp.json()
 
-            status_code = room_info.get("status_code", 0)
-            if status_code == 4003110:
-                return True
+                status_code = room_info.get("status_code", 0)
+                if status_code == 4003110:
+                    return True, True
 
-            if status_code != 0:
-                return False
+                if status_code != 0:
+                    return False, True
 
-            room_data = room_info.get("data") or {}
-            room_status = room_data.get("status")
-            if room_status is not None and str(room_status) != "2":
-                return False
+                room_data = room_info.get("data") or {}
+                room_status = room_data.get("status")
+                if room_status is not None and str(room_status) != "2":
+                    return False, True
 
-            stream_url = room_data.get("stream_url") or {}
-            sdk_stream_data = (
-                (stream_url.get("live_core_sdk_data") or {})
-                .get("pull_data", {})
-                .get("stream_data")
-            )
+                stream_url = room_data.get("stream_url") or {}
+                sdk_stream_data = (
+                    (stream_url.get("live_core_sdk_data") or {})
+                    .get("pull_data", {})
+                    .get("stream_data")
+                )
 
-            return bool(
-                sdk_stream_data
-                or stream_url.get("flv_pull_url")
-                or stream_url.get("hls_pull_url")
-                or stream_url.get("hls_pull_url_map")
-                or stream_url.get("rtmp_pull_url")
-            )
-        except UserLiveError:
-            raise
-        except Exception as e:
-            logger.debug(f"is_room_alive network check failed for room {room_id}: {e}")
-            return False
+                is_live = bool(
+                    sdk_stream_data
+                    or stream_url.get("flv_pull_url")
+                    or stream_url.get("hls_pull_url")
+                    or stream_url.get("hls_pull_url_map")
+                    or stream_url.get("rtmp_pull_url")
+                )
+                return is_live, True
+            except UserLiveError:
+                raise
+            except Exception as e:
+                logger.debug(
+                    f"verify_room_status attempt {attempt + 1}/{retries + 1} failed: {e}"
+                )
+                if attempt < retries:
+                    self.reset_session()
+                    time.sleep(1)
+
+        return False, False
+
+    def is_room_alive(self, room_id: str) -> bool:
+        """
+        Checking whether the user is live.
+        """
+        is_live, _ = self.verify_room_status(room_id)
+        return is_live
 
     def get_user_info(self, user: str) -> dict | None:
         """
@@ -515,7 +557,14 @@ class TikTokAPI:
 
     def download_live_stream(self, live_url: str):
         """Generator that returns the live stream for a given room_id."""
-        stream = self._http_client_stream.get(live_url, stream=True, timeout=(10, 25))
-        for chunk in stream.iter_content(chunk_size=4096):
-            if chunk:
-                yield chunk
+        response = self._http_client_stream.get(live_url, stream=True, timeout=(10, 25))
+        try:
+            for chunk in response.iter_content(chunk_size=4096):
+                if chunk:
+                    yield chunk
+        finally:
+            try:
+                response.close()
+            except Exception:
+                pass
+
