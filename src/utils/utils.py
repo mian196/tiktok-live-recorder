@@ -86,22 +86,57 @@ def save_config(config_dict: dict) -> bool:
 
 def update_tracked_users_in_config(tracked_users: list) -> bool:
     """
-    Updates the 'user' / 'users' field in config.json with enriched TrackedUser dicts.
+    Updates the 'user' / 'users' field in config.json by merging / upserting TrackedUser dicts
+    so existing users in config.json are never deleted.
     """
+    from utils.user_identity import parse_tracked_users, TrackedUser
+
     cfg = read_config()
     if not cfg:
         return False
 
-    users_data = [u.to_dict() if hasattr(u, "to_dict") else u for u in tracked_users]
+    # Extract existing users from config.json
+    existing_raw = cfg.get("users") if "users" in cfg else cfg.get("user")
+    existing_users = parse_tracked_users(existing_raw)
+
+    # Convert incoming tracked_users to TrackedUser objects if not already
+    new_users = []
+    for item in tracked_users:
+        if isinstance(item, TrackedUser):
+            new_users.append(item)
+        else:
+            u = TrackedUser.from_item(item)
+            if u:
+                new_users.append(u)
+
+    # Merge / upsert without deleting existing entries
+    for new_u in new_users:
+        matched = False
+        for ex_u in existing_users:
+            if (new_u.sec_uid and ex_u.sec_uid and new_u.sec_uid == ex_u.sec_uid) or \
+               (new_u.user_id and ex_u.user_id and new_u.user_id == ex_u.user_id) or \
+               (new_u.username.lower() == ex_u.username.lower()):
+                ex_u.username = new_u.username
+                if new_u.sec_uid:
+                    ex_u.sec_uid = new_u.sec_uid
+                if new_u.user_id:
+                    ex_u.user_id = new_u.user_id
+                matched = True
+                break
+        if not matched:
+            existing_users.append(new_u)
+
+    merged_data = [u.to_dict() for u in existing_users]
 
     if "users" in cfg:
-        cfg["users"] = users_data
-    elif len(users_data) == 1 and "user" in cfg and isinstance(cfg["user"], (str, dict)) and not (isinstance(cfg["user"], str) and "," in cfg["user"]):
-        cfg["user"] = users_data[0]
+        cfg["users"] = merged_data
+    elif len(merged_data) == 1 and not isinstance(existing_raw, list):
+        cfg["user"] = merged_data[0]
     else:
-        cfg["user"] = users_data
+        cfg["user"] = merged_data
 
     return save_config(cfg)
+
 
 
 def is_termux() -> bool:
