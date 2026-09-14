@@ -113,9 +113,11 @@ def update_tracked_users_in_config(tracked_users: list) -> bool:
     for new_u in new_users:
         matched = False
         for ex_u in existing_users:
-            if (new_u.sec_uid and ex_u.sec_uid and new_u.sec_uid == ex_u.sec_uid) or \
-               (new_u.user_id and ex_u.user_id and new_u.user_id == ex_u.user_id) or \
-               (new_u.username.lower() == ex_u.username.lower()):
+            if (
+                (new_u.sec_uid and ex_u.sec_uid and new_u.sec_uid == ex_u.sec_uid)
+                or (new_u.user_id and ex_u.user_id and new_u.user_id == ex_u.user_id)
+                or (new_u.username.lower() == ex_u.username.lower())
+            ):
                 ex_u.username = new_u.username
                 if new_u.sec_uid:
                     ex_u.sec_uid = new_u.sec_uid
@@ -136,7 +138,6 @@ def update_tracked_users_in_config(tracked_users: list) -> bool:
         cfg["user"] = merged_data
 
     return save_config(cfg)
-
 
 
 def is_termux() -> bool:

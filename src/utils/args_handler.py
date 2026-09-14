@@ -194,7 +194,12 @@ def validate_and_parse_args():
                 "Missing URL, username, or room ID. Please provide one of these parameters."
             )
 
-    if args.user and isinstance(args.user, list) and len(args.user) > 1 and (args.room_id or args.url):
+    if (
+        args.user
+        and isinstance(args.user, list)
+        and len(args.user) > 1
+        and (args.room_id or args.url)
+    ):
         raise ArgsParseError(
             "When using multiple usernames, do not provide room_id or url."
         )

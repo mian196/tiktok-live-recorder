@@ -204,7 +204,9 @@ def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
     import requests
 
     recorder = TikTokRecorder(
-        RecorderConfig(mode=Mode.MANUAL, user="vpn_user", output=str(tmp_path), retry_delay=0.01)
+        RecorderConfig(
+            mode=Mode.MANUAL, user="vpn_user", output=str(tmp_path), retry_delay=0.01
+        )
     )
 
     class VPNToggleFakeAPI:
@@ -252,7 +254,9 @@ def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
     fake_api = VPNToggleFakeAPI()
     recorder.tiktok = fake_api
 
-    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_convert:
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4"
+    ) as mock_convert:
         mock_convert.return_value = True
         recorder.start_recording("vpn_user", "room_999")
 
@@ -260,4 +264,3 @@ def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
         segments_arg = mock_convert.call_args[0][0]
         assert len(segments_arg) == 2
         assert fake_api.session_resets >= 1
-

@@ -84,4 +84,3 @@ class HttpClient:
         if response.status_code == StatusCode.OK:
             self.req.proxies.update(proxies)
             logger.info("Proxy set up successfully")
-

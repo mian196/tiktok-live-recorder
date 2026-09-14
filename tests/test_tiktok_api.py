@@ -186,4 +186,3 @@ def test_is_room_alive_handles_dns_and_network_exceptions():
     api.http_client = FailingClient()
     # Must not raise an exception; must return False gracefully
     assert api.is_room_alive("123") is False
-

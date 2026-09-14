@@ -38,7 +38,10 @@ def isolate_cli_tests(request, monkeypatch):
     """
     Isolate CLI unit tests from user-specific local config.json entries.
     """
-    if "test_config" not in request.node.nodeid and "test_user_identity" not in request.node.nodeid:
+    if (
+        "test_config" not in request.node.nodeid
+        and "test_user_identity" not in request.node.nodeid
+    ):
         monkeypatch.setattr("utils.utils.read_config", lambda: {})
 
 
@@ -48,5 +51,10 @@ def disable_real_network_notifications(request, monkeypatch):
     Prevent any tests from sending real HTTP requests to Discord webhooks or Telegram.
     """
     if "test_notifier" not in request.node.nodeid:
-        monkeypatch.setattr("notify.notifier.Notifier._send_discord", lambda self, *args, **kwargs: None)
-        monkeypatch.setattr("notify.notifier.Notifier._send_telegram", lambda self, *args, **kwargs: None)
+        monkeypatch.setattr(
+            "notify.notifier.Notifier._send_discord", lambda self, *args, **kwargs: None
+        )
+        monkeypatch.setattr(
+            "notify.notifier.Notifier._send_telegram",
+            lambda self, *args, **kwargs: None,
+        )

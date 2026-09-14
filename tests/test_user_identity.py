@@ -151,6 +151,7 @@ def test_handle_change_recovery_via_sec_uid(tmp_path, monkeypatch):
     )
 
     fake_api = MagicMock()
+
     # Old handle lookup returns None (user changed handle)
     def fake_get_room(user):
         if user == "new_handle":

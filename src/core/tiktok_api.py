@@ -39,12 +39,13 @@ class TikTokAPI:
                 self.http_client = self._client_wrapper.req
                 self._http_client_stream = self._client_wrapper.req_stream
             elif hasattr(self, "_proxy"):
-                self._client_wrapper = HttpClient(self._proxy, getattr(self, "_cookies", None))
+                self._client_wrapper = HttpClient(
+                    self._proxy, getattr(self, "_cookies", None)
+                )
                 self.http_client = self._client_wrapper.req
                 self._http_client_stream = self._client_wrapper.req_stream
         except Exception as e:
             logger.debug(f"Error resetting HTTP sessions: {e}")
-
 
     def _is_authenticated(self) -> bool:
         response = self.http_client.get(f"{self.BASE_URL}/foryou")
@@ -152,7 +153,9 @@ class TikTokAPI:
             response = self.http_client.get(
                 f"{self.BASE_URL}/@{clean_user}",
                 allow_redirects=True,
-                headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                headers={
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                },
             )
             if response.status_code != StatusCode.OK:
                 return None
@@ -190,7 +193,11 @@ class TikTokAPI:
             unique_id_match = re.search(r'"uniqueId":"([^"]+)"', content)
 
             sec_uid = sec_uid_match.group(1) if sec_uid_match else None
-            user_id = (user_id_match.group(1) or user_id_match.group(2)) if user_id_match else None
+            user_id = (
+                (user_id_match.group(1) or user_id_match.group(2))
+                if user_id_match
+                else None
+            )
             unique_id = unique_id_match.group(1) if unique_id_match else clean_user
 
             if sec_uid:
@@ -567,4 +574,3 @@ class TikTokAPI:
                 response.close()
             except Exception:
                 pass
-

@@ -1,14 +1,15 @@
 name: Build and Push Docker Image
 
 on:
-  push:
-    branches:
-      - '**'
-    paths:
-      - 'src/**'
-      - '.github/workflows/docker-publish.yml'
-  release:
-    types: [published]
+  workflow_dispatch:
+#   push:
+#     branches:
+#       - '**'
+#     paths:
+#       - 'src/**'
+#       - '.github/workflows/docker-publish.yml'
+#   release:
+#     types: [published]
 
 jobs:
   build:

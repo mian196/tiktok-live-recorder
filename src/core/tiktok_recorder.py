@@ -118,17 +118,25 @@ class TikTokRecorder:
                         self._save_tracked_users_to_config()
                         # Retry room lookup with new username
                         try:
-                            room_id = self.tiktok.get_room_id_from_user(user_obj.username)
+                            room_id = self.tiktok.get_room_id_from_user(
+                                user_obj.username
+                            )
                         except Exception:
                             pass
                         return user_obj, room_id
             except Exception as e:
-                logger.debug(f"Failed handle recovery for {user_obj.username} via sec_uid: {e}")
+                logger.debug(
+                    f"Failed handle recovery for {user_obj.username} via sec_uid: {e}"
+                )
 
         # Check if sec_uid might be invalid / outdated for this username
         try:
             fresh_info = self.tiktok.get_user_info(user_obj.username)
-            if fresh_info and fresh_info.get("sec_uid") and fresh_info.get("sec_uid") != user_obj.sec_uid:
+            if (
+                fresh_info
+                and fresh_info.get("sec_uid")
+                and fresh_info.get("sec_uid") != user_obj.sec_uid
+            ):
                 user_obj.sec_uid = fresh_info["sec_uid"]
                 user_obj.user_id = fresh_info.get("user_id")
                 logger.warning(
@@ -163,7 +171,9 @@ class TikTokRecorder:
             )
         else:
             if self.tracked_users:
-                self.tracked_users[0] = self._sync_and_resolve_user(self.tracked_users[0])
+                self.tracked_users[0] = self._sync_and_resolve_user(
+                    self.tracked_users[0]
+                )
                 self.user = self.tracked_users[0].username
 
             if self.url:
@@ -176,8 +186,8 @@ class TikTokRecorder:
 
             if not self.room_id:
                 if self.tracked_users:
-                    self.tracked_users[0], self.room_id = self._check_and_recover_user_handle(
-                        self.tracked_users[0]
+                    self.tracked_users[0], self.room_id = (
+                        self._check_and_recover_user_handle(self.tracked_users[0])
                     )
                     self.user = self.tracked_users[0].username
                 else:
@@ -271,9 +281,11 @@ class TikTokRecorder:
                     continue
 
                 if self.tracked_users:
-                    self.tracked_users[0] = self._sync_and_resolve_user(self.tracked_users[0])
-                    self.tracked_users[0], self.room_id = self._check_and_recover_user_handle(
+                    self.tracked_users[0] = self._sync_and_resolve_user(
                         self.tracked_users[0]
+                    )
+                    self.tracked_users[0], self.room_id = (
+                        self._check_and_recover_user_handle(self.tracked_users[0])
                     )
                     self.user = self.tracked_users[0].username
                 else:
@@ -330,7 +342,12 @@ class TikTokRecorder:
                         self.manual_mode()
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)
-                except (ConnectionError, RequestException, HTTPException, OSError) as ex:
+                except (
+                    ConnectionError,
+                    RequestException,
+                    HTTPException,
+                    OSError,
+                ) as ex:
                     logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
                     self.tiktok.reset_session()
                     time.sleep(self.retry_delay)
@@ -428,9 +445,7 @@ class TikTokRecorder:
                 logger.debug(f"Error resetting session: {e}")
 
     def _build_output_path(self, user: str) -> str:
-        filename = (
-            f"{user}-{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}.mp4"
-        )
+        filename = f"{user}-{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}.mp4"
         if self.output:
             output_dir = Path(self.output) / user
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -517,7 +532,9 @@ class TikTokRecorder:
                                     break
                             else:
                                 # Stream generator completed (stream rotated or connection severed)
-                                is_alive, is_confirmed = self._verify_room_status(room_id)
+                                is_alive, is_confirmed = self._verify_room_status(
+                                    room_id
+                                )
                                 if is_confirmed and not is_alive:
                                     status_bar.clear()
                                     logger.info(
@@ -532,7 +549,9 @@ class TikTokRecorder:
                                     )
                                     self._reset_session_if_available()
                                     try:
-                                        fresh_urls = self.tiktok.get_live_urls(room_id, user=user)
+                                        fresh_urls = self.tiktok.get_live_urls(
+                                            room_id, user=user
+                                        )
                                         if fresh_urls:
                                             live_url = fresh_urls[0]
                                     except Exception:
