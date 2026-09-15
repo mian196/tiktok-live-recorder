@@ -23,10 +23,30 @@ class VideoManagement:
         return False
 
     @staticmethod
-    def validate_video_integrity(file_path: str, ffmpeg_path: str = None) -> bool:
+    def get_segment_duration(file_path: str, ffprobe_cmd: str = "ffprobe") -> float:
+        """Probe the duration of a video segment in seconds."""
+        try:
+            probe = ffmpeg.probe(str(file_path), cmd=ffprobe_cmd)
+            fmt = probe.get("format", {})
+            duration = float(fmt.get("duration", 0) or 0)
+            if duration > 0:
+                return duration
+            for stream in probe.get("streams", []):
+                if stream.get("codec_type") == "video":
+                    s_dur = float(stream.get("duration", 0) or 0)
+                    if s_dur > 0:
+                        return s_dur
+        except Exception:
+            pass
+        return 0.0
+
+    @staticmethod
+    def validate_video_integrity(
+        file_path: str, ffmpeg_path: str = None, min_expected_duration: float = None
+    ) -> bool:
         """
         Validate that the converted MP4 file exists, has data,
-        and contains a valid playable video stream.
+        contains a valid playable video stream, and meets expected duration if provided.
         """
         try:
             path = Path(file_path)
@@ -44,7 +64,24 @@ class VideoManagement:
             probe = ffmpeg.probe(str(path), cmd=cmd)
             streams = probe.get("streams", [])
             video_streams = [s for s in streams if s.get("codec_type") == "video"]
-            return len(video_streams) > 0
+            if not video_streams:
+                return False
+
+            if min_expected_duration and min_expected_duration > 0:
+                fmt = probe.get("format", {})
+                duration = float(
+                    fmt.get("duration", 0)
+                    or (video_streams[0].get("duration", 0) if video_streams else 0)
+                    or 0
+                )
+                # If output duration is significantly less than expected (>20% drop), reject copy
+                if duration > 0 and duration < (min_expected_duration * 0.80):
+                    logger.warning(
+                        f"Converted video duration ({duration:.1f}s) is significantly less than expected total ({min_expected_duration:.1f}s)."
+                    )
+                    return False
+
+            return True
         except Exception as e:
             logger.warning(f"Integrity check failed on {file_path}: {e}")
             return False
@@ -85,6 +122,19 @@ class VideoManagement:
                 )
                 return False
 
+        ffprobe_cmd = "ffprobe"
+        if ffmpeg_path:
+            cand = Path(ffmpeg_path).with_name(
+                "ffprobe.exe" if os.name == "nt" else "ffprobe"
+            )
+            if cand.exists():
+                ffprobe_cmd = str(cand)
+
+        total_expected_duration = sum(
+            VideoManagement.get_segment_duration(seg, ffprobe_cmd=ffprobe_cmd)
+            for seg in valid_segments
+        )
+
         if len(valid_segments) == 1:
             seg_file = valid_segments[0]
             logger.info(f"Converting {Path(seg_file).name} to MP4 format...")
@@ -106,7 +156,9 @@ class VideoManagement:
                     str(target_path), **output_args
                 ).run(quiet=True, cmd=cmd, capture_stderr=True)
                 if VideoManagement.validate_video_integrity(
-                    str(target_path), ffmpeg_path=cmd
+                    str(target_path),
+                    ffmpeg_path=cmd,
+                    min_expected_duration=total_expected_duration,
                 ):
                     copy_success = True
                 else:
@@ -195,16 +247,23 @@ class VideoManagement:
 
             concat_copy_success = False
             try:
-                ffmpeg.input(str(manifest_file), f="concat", safe=0).output(
-                    str(target_path), **output_args
-                ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                ffmpeg.input(
+                    str(manifest_file),
+                    f="concat",
+                    safe=0,
+                    fflags="+genpts+discardcorrupt",
+                ).output(str(target_path), **output_args).run(
+                    quiet=True, cmd=cmd, capture_stderr=True
+                )
                 if VideoManagement.validate_video_integrity(
-                    str(target_path), ffmpeg_path=cmd
+                    str(target_path),
+                    ffmpeg_path=cmd,
+                    min_expected_duration=total_expected_duration,
                 ):
                     concat_copy_success = True
                 else:
                     logger.warning(
-                        "Concat copy produced incomplete video track. Falling back to transcoding..."
+                        "Concat copy produced incomplete video track or dropped segments. Falling back to transcoding..."
                     )
             except ffmpeg.Error as e:
                 err_text = (
@@ -230,9 +289,14 @@ class VideoManagement:
                     }
                     if bitrate:
                         fallback_args["b:v"] = bitrate
-                    ffmpeg.input(str(manifest_file), f="concat", safe=0).output(
-                        str(target_path), **fallback_args
-                    ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                    ffmpeg.input(
+                        str(manifest_file),
+                        f="concat",
+                        safe=0,
+                        fflags="+genpts+discardcorrupt",
+                    ).output(str(target_path), **fallback_args).run(
+                        quiet=True, cmd=cmd, capture_stderr=True
+                    )
                 except ffmpeg.Error as transcode_err:
                     err_msg = (
                         transcode_err.stderr.decode(errors="replace")
@@ -263,6 +327,7 @@ class VideoManagement:
                     manifest_file.unlink(missing_ok=True)
                 except OSError:
                     pass
+
 
     @staticmethod
     def convert_flv_to_mp4(
