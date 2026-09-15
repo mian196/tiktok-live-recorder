@@ -50,6 +50,7 @@ def _build_config(args, mode, cookies, user=None):
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         keep_flv=args.keep_flv,
+        move_to_recycle_bin=getattr(args, "move_to_recycle_bin", True),
         retry_delay=getattr(args, "retry_delay", 5),
         disk_space_alert_gb=getattr(args, "disk_space_alert_gb", 5),
     )

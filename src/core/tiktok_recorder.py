@@ -38,6 +38,7 @@ class TikTokRecorder:
         self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
         self.keep_flv = config.keep_flv
+        self.move_to_recycle_bin = getattr(config, "move_to_recycle_bin", True)
         self.retry_delay = getattr(config, "retry_delay", 5)
         self.disk_space_alert_gb = getattr(config, "disk_space_alert_gb", 5)
         self.users = config.users
@@ -656,6 +657,7 @@ class TikTokRecorder:
                 self.bitrate,
                 self.ffmpeg_path,
                 self.keep_flv,
+                self.move_to_recycle_bin,
             )
 
         if success:

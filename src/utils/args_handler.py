@@ -126,6 +126,15 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-no-recycle-bin",
+        "--no-recycle-bin",
+        dest="move_to_recycle_bin",
+        action="store_false",
+        default=True,
+        help="Permanently delete FLV files instead of moving them to the Recycle Bin/Trash.",
+    )
+
+    parser.add_argument(
         "-no-update-check",
         dest="update_check",
         action="store_false",

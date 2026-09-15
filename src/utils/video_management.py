@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -8,6 +9,107 @@ from utils.logger_manager import logger
 
 
 class VideoManagement:
+    @staticmethod
+    def remove_or_trash_file(
+        file_path: str, move_to_recycle_bin: bool = True
+    ) -> bool:
+        """
+        Safely remove a file by moving it to the system Recycle Bin (Windows) or Trash (macOS/Linux),
+        falling back to permanent deletion if trash operation is unavailable or disabled.
+        """
+        path = Path(file_path)
+        if not path.exists():
+            return True
+
+        if move_to_recycle_bin:
+            try:
+                if sys.platform == "win32":
+                    import ctypes
+                    from ctypes import wintypes
+
+                    class SHFILEOPSTRUCTW(ctypes.Structure):
+                        _fields_ = [
+                            ("hwnd", wintypes.HWND),
+                            ("wFunc", wintypes.UINT),
+                            ("pFrom", wintypes.LPCWSTR),
+                            ("pTo", wintypes.LPCWSTR),
+                            ("fFlags", wintypes.WORD),
+                            ("fAnyOperationsAborted", wintypes.BOOL),
+                            ("hNameMappings", wintypes.LPVOID),
+                            ("lpszProgressTitle", wintypes.LPCWSTR),
+                        ]
+
+                    FO_DELETE = 0x0003
+                    FOF_ALLOWUNDO = 0x0040  # Move to Recycle Bin instead of permanent deletion
+                    FOF_NOCONFIRMATION = 0x0010  # Don't ask user for confirmation
+                    FOF_SILENT = 0x0004  # Don't show progress dialog
+                    FOF_NOERRORUI = 0x0400  # Don't display error UI
+
+                    # Windows SHFileOperation requires double null-terminated string
+                    p_from = str(path.resolve()) + "\0\0"
+                    fileop = SHFILEOPSTRUCTW(
+                        hwnd=None,
+                        wFunc=FO_DELETE,
+                        pFrom=p_from,
+                        pTo=None,
+                        fFlags=(
+                            FOF_ALLOWUNDO
+                            | FOF_NOCONFIRMATION
+                            | FOF_SILENT
+                            | FOF_NOERRORUI
+                        ),
+                        fAnyOperationsAborted=False,
+                        hNameMappings=None,
+                        lpszProgressTitle=None,
+                    )
+                    res = ctypes.windll.shell32.SHFileOperationW(
+                        ctypes.byref(fileop)
+                    )
+                    if res == 0 and not fileop.fAnyOperationsAborted and not path.exists():
+                        logger.info(f"Moved {path.name} to Recycle Bin.")
+                        return True
+                elif sys.platform == "darwin":
+                    import subprocess
+
+                    cmd = [
+                        "osascript",
+                        "-e",
+                        f'tell application "Finder" to delete POSIX file "{path.resolve()}"',
+                    ]
+                    proc = subprocess.run(cmd, capture_output=True, text=True)
+                    if proc.returncode == 0 and not path.exists():
+                        logger.info(f"Moved {path.name} to Trash.")
+                        return True
+                else:
+                    import subprocess
+
+                    for tool in [
+                        ["gio", "trash", str(path.resolve())],
+                        ["trash-put", str(path.resolve())],
+                    ]:
+                        try:
+                            proc = subprocess.run(
+                                tool, capture_output=True, text=True
+                            )
+                            if proc.returncode == 0 and not path.exists():
+                                logger.info(f"Moved {path.name} to Trash.")
+                                return True
+                        except Exception:
+                            continue
+            except Exception as e:
+                logger.warning(
+                    f"Could not move {file_path} to Recycle Bin/Trash: {e}. Falling back to standard removal."
+                )
+
+        # Standard deletion fallback
+        try:
+            os.remove(file_path)
+            logger.info(f"Removed temporary file: {path.name}")
+            return True
+        except OSError as err:
+            logger.warning(f"Could not remove temporary file {file_path}: {err}")
+            return False
+
     @staticmethod
     def wait_for_file_release(file, timeout=10):
         """
@@ -93,6 +195,7 @@ class VideoManagement:
         bitrate: str = None,
         ffmpeg_path: str = None,
         keep_flv: bool = False,
+        move_to_recycle_bin: bool = True,
     ) -> bool:
         """
         Convert one or multiple recorded FLV segments into a single cohesive MP4 file.
@@ -375,15 +478,12 @@ class VideoManagement:
             logger.info("Raw FLV segments kept as requested in configuration (keep_flv=True).")
         else:
             logger.info(
-                f"Safely removing {len(valid_segments)} raw FLV segment(s) after verified merge (keep_flv=False)..."
+                f"Safely cleaning up {len(valid_segments)} raw FLV segment(s) after verified merge (keep_flv=False, move_to_recycle_bin={move_to_recycle_bin})..."
             )
             for seg in valid_segments:
-                try:
-                    os.remove(seg)
-                except OSError as err:
-                    logger.warning(
-                        f"Could not remove temporary segment {seg}: {err}"
-                    )
+                VideoManagement.remove_or_trash_file(
+                    seg, move_to_recycle_bin=move_to_recycle_bin
+                )
 
         logger.info(f"Finished converting {target_path.resolve()}\n")
         return True
@@ -391,7 +491,11 @@ class VideoManagement:
 
     @staticmethod
     def convert_flv_to_mp4(
-        file, bitrate=None, ffmpeg_path=None, keep_flv: bool = False
+        file,
+        bitrate=None,
+        ffmpeg_path=None,
+        keep_flv: bool = False,
+        move_to_recycle_bin: bool = True,
     ):
         """
         Convert the video from flv format to mp4 format (backwards compatibility).
@@ -405,4 +509,5 @@ class VideoManagement:
             bitrate=bitrate,
             ffmpeg_path=ffmpeg_path,
             keep_flv=keep_flv,
+            move_to_recycle_bin=move_to_recycle_bin,
         )

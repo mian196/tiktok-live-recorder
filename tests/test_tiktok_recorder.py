@@ -148,12 +148,14 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
             bitrate_arg,
             ffmpeg_arg,
             keep_flv_arg,
+            move_to_recycle_bin_arg,
         ) = mock_convert.call_args[0]
         # Should have captured 2 separate segments
         assert len(segments_arg) == 2
         assert output_arg.endswith(".mp4")
         assert "test_user-" in output_arg
         assert keep_flv_arg is False
+        assert move_to_recycle_bin_arg is True
 
 
 def test_automatic_mode_multi_checks_all_users():

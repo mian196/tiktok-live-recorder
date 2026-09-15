@@ -196,3 +196,34 @@ def test_convert_deletes_flvs_when_duration_matches_and_keep_flv_false(tmp_path)
         assert not seg1.exists()
         assert not seg2.exists()
 
+
+def test_convert_passes_move_to_recycle_bin(tmp_path):
+    seg1 = tmp_path / "part1.flv"
+    seg1.write_bytes(b"flv part 1 content")
+    out = tmp_path / "output.mp4"
+
+    with patch("ffmpeg.input") as mock_input, \
+         patch.object(VideoManagement, "remove_or_trash_file") as mock_trash:
+        mock_output = MagicMock()
+        mock_input.return_value.output.return_value = mock_output
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"mp4 content")
+
+        result = VideoManagement.convert_segments_to_mp4(
+            [str(seg1)], str(out), keep_flv=False, move_to_recycle_bin=True
+        )
+
+        assert result is True
+        mock_trash.assert_called_once_with(str(seg1), move_to_recycle_bin=True)
+
+
+def test_remove_or_trash_file_fallback_deletes_file(tmp_path):
+    seg = tmp_path / "test.flv"
+    seg.write_bytes(b"dummy")
+    assert seg.exists()
+
+    # When move_to_recycle_bin is False, directly removes
+    success = VideoManagement.remove_or_trash_file(str(seg), move_to_recycle_bin=False)
+    assert success is True
+    assert not seg.exists()
+
+

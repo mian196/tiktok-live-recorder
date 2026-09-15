@@ -21,5 +21,6 @@ class RecorderConfig:
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     keep_flv: bool = False
+    move_to_recycle_bin: bool = True
     retry_delay: int = 5
     disk_space_alert_gb: int = 5

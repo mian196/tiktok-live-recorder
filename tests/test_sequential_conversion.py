@@ -41,7 +41,7 @@ def test_conversion_lock_prevents_concurrent_conversions(tmp_path):
     max_concurrent = 0
     run_lock = threading.Lock()
 
-    def fake_convert(segments, output, bitrate, ffmpeg_path, keep_flv):
+    def fake_convert(*args, **kwargs):
         nonlocal concurrent_runs, max_concurrent
         with run_lock:
             concurrent_runs += 1
