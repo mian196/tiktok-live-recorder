@@ -130,10 +130,34 @@ class VideoManagement:
             if cand.exists():
                 ffprobe_cmd = str(cand)
 
+        # Build in-memory index of duration and file size for all valid segments
+        segment_index = {}
+        for seg in valid_segments:
+            dur = VideoManagement.get_segment_duration(seg, ffprobe_cmd=ffprobe_cmd)
+            size_mb = os.path.getsize(seg) / (1024 * 1024)
+            segment_index[seg] = {
+                "duration": dur,
+                "size_mb": size_mb,
+                "filename": Path(seg).name,
+            }
+
         total_expected_duration = sum(
-            VideoManagement.get_segment_duration(seg, ffprobe_cmd=ffprobe_cmd)
-            for seg in valid_segments
+            info["duration"] for info in segment_index.values()
         )
+        total_input_size_mb = sum(
+            info["size_mb"] for info in segment_index.values()
+        )
+
+        indexed_summary = ", ".join(
+            f"[{info['filename']}: {info['duration']:.1f}s, {info['size_mb']:.1f}MB]"
+            for info in segment_index.values()
+        )
+        logger.info(
+            f"Indexed {len(valid_segments)} recorded video segment(s) "
+            f"(Expected total duration: ~{total_expected_duration:.1f}s, total size: {total_input_size_mb:.1f}MB): {indexed_summary}"
+        )
+
+        conversion_succeeded = False
 
         if len(valid_segments) == 1:
             seg_file = valid_segments[0]
@@ -192,6 +216,7 @@ class VideoManagement:
                     ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
                         str(target_path), **fallback_args
                     ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                    conversion_succeeded = True
                 except ffmpeg.Error as transcode_err:
                     err_msg = (
                         transcode_err.stderr.decode(errors="replace")
@@ -200,133 +225,168 @@ class VideoManagement:
                     )
                     logger.error(f"ffmpeg conversion failed: {err_msg}")
                     return False
-
-            if target_path.exists() and os.path.getsize(target_path) > 0:
-                if keep_flv:
-                    logger.info(f"Raw FLV file kept: {Path(seg_file).resolve()}")
-                else:
-                    try:
-                        os.remove(seg_file)
-                    except OSError as err:
-                        logger.warning(
-                            f"Could not remove temporary segment {seg_file}: {err}"
-                        )
-                logger.info(f"Finished converting {target_path.resolve()}\n")
-                return True
-            return False
-
-        # Multiple segments (reconnected stream parts)
-        logger.info(
-            f"Merging {len(valid_segments)} recorded segments into {target_path.name}..."
-        )
-        manifest_file = (
-            target_path.parent
-            / f"concat_{target_path.stem}_{int(time.time() * 1000)}.txt"
-        )
-        try:
-            with open(manifest_file, "w", encoding="utf-8") as f:
-                for seg in valid_segments:
-                    safe_path = (
-                        str(Path(seg).resolve())
-                        .replace("\\", "/")
-                        .replace("'", "'\\''")
-                    )
-                    f.write(f"file '{safe_path}'\n")
-
-            output_args = {
-                "c": "copy",
-                "y": "-y",
-                "movflags": "+faststart",
-                "avoid_negative_ts": "make_zero",
-            }
-            if bitrate:
-                output_args["b:v"] = bitrate
-                output_args["c:v"] = "libx264"
-                output_args["c:a"] = "copy"
-                del output_args["c"]
-
-            concat_copy_success = False
+            else:
+                conversion_succeeded = True
+        else:
+            # Multiple segments (reconnected stream parts)
+            logger.info(
+                f"Merging {len(valid_segments)} recorded segments into {target_path.name}..."
+            )
+            manifest_file = (
+                target_path.parent
+                / f"concat_{target_path.stem}_{int(time.time() * 1000)}.txt"
+            )
             try:
-                ffmpeg.input(
-                    str(manifest_file),
-                    f="concat",
-                    safe=0,
-                    fflags="+genpts+discardcorrupt",
-                ).output(str(target_path), **output_args).run(
-                    quiet=True, cmd=cmd, capture_stderr=True
-                )
-                if VideoManagement.validate_video_integrity(
-                    str(target_path),
-                    ffmpeg_path=cmd,
-                    min_expected_duration=total_expected_duration,
-                ):
-                    concat_copy_success = True
-                else:
-                    logger.warning(
-                        "Concat copy produced incomplete video track or dropped segments. Falling back to transcoding..."
-                    )
-            except ffmpeg.Error as e:
-                err_text = (
-                    e.stderr.decode(errors="replace")
-                    if hasattr(e, "stderr") and e.stderr
-                    else str(e)
-                )
-                logger.warning(
-                    f"Concat stream copy failed ({err_text[:120]}...). "
-                    "Retrying with video transcoding to merge all segments cleanly..."
-                )
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    for seg in valid_segments:
+                        safe_path = (
+                            str(Path(seg).resolve())
+                            .replace("\\", "/")
+                            .replace("'", "'\\''")
+                        )
+                        f.write(f"file '{safe_path}'\n")
 
-            if not concat_copy_success:
+                output_args = {
+                    "c": "copy",
+                    "y": "-y",
+                    "movflags": "+faststart",
+                    "avoid_negative_ts": "make_zero",
+                }
+                if bitrate:
+                    output_args["b:v"] = bitrate
+                    output_args["c:v"] = "libx264"
+                    output_args["c:a"] = "copy"
+                    del output_args["c"]
+
+                concat_copy_success = False
                 try:
-                    fallback_args = {
-                        "c:v": "libx264",
-                        "c:a": "aac",
-                        "pix_fmt": "yuv420p",
-                        "af": "aresample=async=1000",
-                        "y": "-y",
-                        "movflags": "+faststart",
-                        "avoid_negative_ts": "make_zero",
-                    }
-                    if bitrate:
-                        fallback_args["b:v"] = bitrate
                     ffmpeg.input(
                         str(manifest_file),
                         f="concat",
                         safe=0,
                         fflags="+genpts+discardcorrupt",
-                    ).output(str(target_path), **fallback_args).run(
+                    ).output(str(target_path), **output_args).run(
                         quiet=True, cmd=cmd, capture_stderr=True
                     )
-                except ffmpeg.Error as transcode_err:
-                    err_msg = (
-                        transcode_err.stderr.decode(errors="replace")
-                        if hasattr(transcode_err, "stderr") and transcode_err.stderr
-                        else str(transcode_err)
+                    if VideoManagement.validate_video_integrity(
+                        str(target_path),
+                        ffmpeg_path=cmd,
+                        min_expected_duration=total_expected_duration,
+                    ):
+                        concat_copy_success = True
+                    else:
+                        logger.warning(
+                            "Concat copy produced incomplete video track or dropped segments. Falling back to transcoding..."
+                        )
+                except ffmpeg.Error as e:
+                    err_text = (
+                        e.stderr.decode(errors="replace")
+                        if hasattr(e, "stderr") and e.stderr
+                        else str(e)
                     )
-                    logger.error(f"ffmpeg segment merge failed: {err_msg}")
-                    return False
+                    logger.warning(
+                        f"Concat stream copy failed ({err_text[:120]}...). "
+                        "Retrying with video transcoding to merge all segments cleanly..."
+                    )
 
-            if target_path.exists() and os.path.getsize(target_path) > 0:
-                if keep_flv:
-                    logger.info("Raw FLV segments kept as requested.")
+                if not concat_copy_success:
+                    try:
+                        fallback_args = {
+                            "c:v": "libx264",
+                            "c:a": "aac",
+                            "pix_fmt": "yuv420p",
+                            "af": "aresample=async=1000",
+                            "y": "-y",
+                            "movflags": "+faststart",
+                            "avoid_negative_ts": "make_zero",
+                        }
+                        if bitrate:
+                            fallback_args["b:v"] = bitrate
+                        ffmpeg.input(
+                            str(manifest_file),
+                            f="concat",
+                            safe=0,
+                            fflags="+genpts+discardcorrupt",
+                        ).output(str(target_path), **fallback_args).run(
+                            quiet=True, cmd=cmd, capture_stderr=True
+                        )
+                        conversion_succeeded = True
+                    except ffmpeg.Error as transcode_err:
+                        err_msg = (
+                            transcode_err.stderr.decode(errors="replace")
+                            if hasattr(transcode_err, "stderr") and transcode_err.stderr
+                            else str(transcode_err)
+                        )
+                        logger.error(f"ffmpeg segment merge failed: {err_msg}")
+                        return False
                 else:
-                    for seg in valid_segments:
-                        try:
-                            os.remove(seg)
-                        except OSError as err:
-                            logger.warning(
-                                f"Could not remove temporary segment {seg}: {err}"
-                            )
-                logger.info(f"Finished converting {target_path.resolve()}\n")
-                return True
+                    conversion_succeeded = True
+
+            finally:
+                if manifest_file.exists():
+                    try:
+                        manifest_file.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+
+        # Strict duration and file verification before any deletion
+        if not conversion_succeeded or not target_path.exists() or os.path.getsize(target_path) == 0:
+            logger.error(
+                f"Merged output file {target_path} is missing or empty. "
+                f"PRESERVING ALL {len(valid_segments)} RAW FLV FILES to prevent data loss."
+            )
             return False
 
-        finally:
-            if manifest_file.exists():
+        actual_output_duration = VideoManagement.get_segment_duration(
+            str(target_path), ffprobe_cmd=ffprobe_cmd
+        )
+        output_size_mb = os.path.getsize(target_path) / (1024 * 1024)
+
+        duration_matched = True
+        if total_expected_duration > 0:
+            if actual_output_duration > 0:
+                # Tolerance: duration is at least 95% of expected duration or within 2.0 seconds
+                if (
+                    actual_output_duration < (total_expected_duration * 0.95)
+                    and (total_expected_duration - actual_output_duration) > 2.0
+                ):
+                    duration_matched = False
+            else:
+                # If output duration could not be determined via probe, check stream integrity
+                if not VideoManagement.validate_video_integrity(
+                    str(target_path), ffmpeg_path=cmd
+                ):
+                    duration_matched = False
+
+        if not duration_matched:
+            logger.error(
+                f"DURATION MISMATCH: Merged MP4 duration ({actual_output_duration:.1f}s) "
+                f"does not match indexed total duration ({total_expected_duration:.1f}s). "
+                f"PRESERVING ALL {len(valid_segments)} RAW FLV FILES TO PREVENT DATA LOSS."
+            )
+            return False
+
+        logger.info(
+            f"Video verification PASSED: Merged MP4 duration: {actual_output_duration:.1f}s "
+            f"({output_size_mb:.1f}MB) matches indexed total (~{total_expected_duration:.1f}s)."
+        )
+
+        if keep_flv:
+            logger.info("Raw FLV segments kept as requested in configuration (keep_flv=True).")
+        else:
+            logger.info(
+                f"Safely removing {len(valid_segments)} raw FLV segment(s) after verified merge (keep_flv=False)..."
+            )
+            for seg in valid_segments:
                 try:
-                    manifest_file.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                    os.remove(seg)
+                except OSError as err:
+                    logger.warning(
+                        f"Could not remove temporary segment {seg}: {err}"
+                    )
+
+        logger.info(f"Finished converting {target_path.resolve()}\n")
+        return True
 
 
     @staticmethod

@@ -123,3 +123,76 @@ def test_convert_keeps_flv_when_requested(tmp_path):
         # Both segments must be retained when keep_flv=True
         assert seg1.exists()
         assert seg2.exists()
+
+
+def test_convert_preserves_flvs_on_duration_mismatch(tmp_path):
+    """When the merged output video duration is less than the indexed duration,
+    FLV files MUST NEVER be deleted even when keep_flv is False."""
+    seg1 = tmp_path / "part1.flv"
+    seg2 = tmp_path / "part2.flv"
+    seg1.write_bytes(b"flv part 1 content")
+    seg2.write_bytes(b"flv part 2 content")
+    out = tmp_path / "output.mp4"
+
+    def mock_get_duration(file_path, **kwargs):
+        # seg1 = 50s, seg2 = 50s (Total indexed = 100s)
+        # output file = 30s (Severe drop / dropped segment)
+        if "part1" in str(file_path):
+            return 50.0
+        if "part2" in str(file_path):
+            return 50.0
+        if "output" in str(file_path):
+            return 30.0
+        return 0.0
+
+    with patch("ffmpeg.input") as mock_input, \
+         patch.object(VideoManagement, "get_segment_duration", side_effect=mock_get_duration):
+        mock_output = MagicMock()
+        mock_input.return_value.output.return_value = mock_output
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"corrupted short mp4")
+
+        result = VideoManagement.convert_segments_to_mp4(
+            [str(seg1), str(seg2)], str(out), keep_flv=False
+        )
+
+        # Verification fails due to duration mismatch
+        assert result is False
+        # FLV files MUST BE PRESERVED
+        assert seg1.exists()
+        assert seg2.exists()
+
+
+def test_convert_deletes_flvs_when_duration_matches_and_keep_flv_false(tmp_path):
+    """When the merged output video duration matches the indexed duration and keep_flv is False,
+    FLVs should be safely cleaned up."""
+    seg1 = tmp_path / "part1.flv"
+    seg2 = tmp_path / "part2.flv"
+    seg1.write_bytes(b"flv part 1 content")
+    seg2.write_bytes(b"flv part 2 content")
+    out = tmp_path / "output.mp4"
+
+    def mock_get_duration(file_path, **kwargs):
+        if "part1" in str(file_path):
+            return 60.0
+        if "part2" in str(file_path):
+            return 40.0
+        if "output" in str(file_path):
+            return 100.0  # Exact match
+        return 0.0
+
+    with patch("ffmpeg.input") as mock_input, \
+         patch.object(VideoManagement, "get_segment_duration", side_effect=mock_get_duration):
+        mock_output = MagicMock()
+        mock_input.return_value.output.return_value = mock_output
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"healthy full mp4")
+
+        result = VideoManagement.convert_segments_to_mp4(
+            [str(seg1), str(seg2)], str(out), keep_flv=False
+        )
+
+        assert result is True
+        assert out.exists()
+        # Cleaned up safely
+        assert not seg1.exists()
+        assert not seg2.exists()
+
