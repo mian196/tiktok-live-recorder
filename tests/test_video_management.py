@@ -145,11 +145,17 @@ def test_convert_preserves_flvs_on_duration_mismatch(tmp_path):
             return 30.0
         return 0.0
 
-    with patch("ffmpeg.input") as mock_input, \
-         patch.object(VideoManagement, "get_segment_duration", side_effect=mock_get_duration):
+    with (
+        patch("ffmpeg.input") as mock_input,
+        patch.object(
+            VideoManagement, "get_segment_duration", side_effect=mock_get_duration
+        ),
+    ):
         mock_output = MagicMock()
         mock_input.return_value.output.return_value = mock_output
-        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"corrupted short mp4")
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(
+            b"corrupted short mp4"
+        )
 
         result = VideoManagement.convert_segments_to_mp4(
             [str(seg1), str(seg2)], str(out), keep_flv=False
@@ -180,11 +186,17 @@ def test_convert_deletes_flvs_when_duration_matches_and_keep_flv_false(tmp_path)
             return 100.0  # Exact match
         return 0.0
 
-    with patch("ffmpeg.input") as mock_input, \
-         patch.object(VideoManagement, "get_segment_duration", side_effect=mock_get_duration):
+    with (
+        patch("ffmpeg.input") as mock_input,
+        patch.object(
+            VideoManagement, "get_segment_duration", side_effect=mock_get_duration
+        ),
+    ):
         mock_output = MagicMock()
         mock_input.return_value.output.return_value = mock_output
-        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"healthy full mp4")
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(
+            b"healthy full mp4"
+        )
 
         result = VideoManagement.convert_segments_to_mp4(
             [str(seg1), str(seg2)], str(out), keep_flv=False
@@ -202,8 +214,10 @@ def test_convert_passes_move_to_recycle_bin(tmp_path):
     seg1.write_bytes(b"flv part 1 content")
     out = tmp_path / "output.mp4"
 
-    with patch("ffmpeg.input") as mock_input, \
-         patch.object(VideoManagement, "remove_or_trash_file") as mock_trash:
+    with (
+        patch("ffmpeg.input") as mock_input,
+        patch.object(VideoManagement, "remove_or_trash_file") as mock_trash,
+    ):
         mock_output = MagicMock()
         mock_input.return_value.output.return_value = mock_output
         mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"mp4 content")
@@ -225,5 +239,3 @@ def test_remove_or_trash_file_fallback_deletes_file(tmp_path):
     success = VideoManagement.remove_or_trash_file(str(seg), move_to_recycle_bin=False)
     assert success is True
     assert not seg.exists()
-
-

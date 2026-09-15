@@ -534,7 +534,9 @@ class TikTokRecorder:
                                 elapsed_time = time.time() - start_time
                                 if self.duration and elapsed_time >= self.duration:
                                     stop_recording = True
-                                    part_reason = f"Duration limit reached ({self.duration}s)"
+                                    part_reason = (
+                                        f"Duration limit reached ({self.duration}s)"
+                                    )
                                     break
                             else:
                                 # Stream generator completed (stream rotated or connection severed)
@@ -628,7 +630,6 @@ class TikTokRecorder:
                     Path(segment_path).unlink(missing_ok=True)
                     if not stop_recording and segment_bytes == 0:
                         time.sleep(self.retry_delay)
-
 
             status_bar.finish()
 

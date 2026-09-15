@@ -10,9 +10,7 @@ from utils.logger_manager import logger
 
 class VideoManagement:
     @staticmethod
-    def remove_or_trash_file(
-        file_path: str, move_to_recycle_bin: bool = True
-    ) -> bool:
+    def remove_or_trash_file(file_path: str, move_to_recycle_bin: bool = True) -> bool:
         """
         Safely remove a file by moving it to the system Recycle Bin (Windows) or Trash (macOS/Linux),
         falling back to permanent deletion if trash operation is unavailable or disabled.
@@ -40,7 +38,9 @@ class VideoManagement:
                         ]
 
                     FO_DELETE = 0x0003
-                    FOF_ALLOWUNDO = 0x0040  # Move to Recycle Bin instead of permanent deletion
+                    FOF_ALLOWUNDO = (
+                        0x0040  # Move to Recycle Bin instead of permanent deletion
+                    )
                     FOF_NOCONFIRMATION = 0x0010  # Don't ask user for confirmation
                     FOF_SILENT = 0x0004  # Don't show progress dialog
                     FOF_NOERRORUI = 0x0400  # Don't display error UI
@@ -62,10 +62,12 @@ class VideoManagement:
                         hNameMappings=None,
                         lpszProgressTitle=None,
                     )
-                    res = ctypes.windll.shell32.SHFileOperationW(
-                        ctypes.byref(fileop)
-                    )
-                    if res == 0 and not fileop.fAnyOperationsAborted and not path.exists():
+                    res = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(fileop))
+                    if (
+                        res == 0
+                        and not fileop.fAnyOperationsAborted
+                        and not path.exists()
+                    ):
                         logger.info(f"Moved {path.name} to Recycle Bin.")
                         return True
                 elif sys.platform == "darwin":
@@ -88,9 +90,7 @@ class VideoManagement:
                         ["trash-put", str(path.resolve())],
                     ]:
                         try:
-                            proc = subprocess.run(
-                                tool, capture_output=True, text=True
-                            )
+                            proc = subprocess.run(tool, capture_output=True, text=True)
                             if proc.returncode == 0 and not path.exists():
                                 logger.info(f"Moved {path.name} to Trash.")
                                 return True
@@ -247,9 +247,7 @@ class VideoManagement:
         total_expected_duration = sum(
             info["duration"] for info in segment_index.values()
         )
-        total_input_size_mb = sum(
-            info["size_mb"] for info in segment_index.values()
-        )
+        total_input_size_mb = sum(info["size_mb"] for info in segment_index.values())
 
         indexed_summary = ", ".join(
             f"[{info['filename']}: {info['duration']:.1f}s, {info['size_mb']:.1f}MB]"
@@ -433,7 +431,11 @@ class VideoManagement:
                         pass
 
         # Strict duration and file verification before any deletion
-        if not conversion_succeeded or not target_path.exists() or os.path.getsize(target_path) == 0:
+        if (
+            not conversion_succeeded
+            or not target_path.exists()
+            or os.path.getsize(target_path) == 0
+        ):
             logger.error(
                 f"Merged output file {target_path} is missing or empty. "
                 f"PRESERVING ALL {len(valid_segments)} RAW FLV FILES to prevent data loss."
@@ -475,7 +477,9 @@ class VideoManagement:
         )
 
         if keep_flv:
-            logger.info("Raw FLV segments kept as requested in configuration (keep_flv=True).")
+            logger.info(
+                "Raw FLV segments kept as requested in configuration (keep_flv=True)."
+            )
         else:
             logger.info(
                 f"Safely cleaning up {len(valid_segments)} raw FLV segment(s) after verified merge (keep_flv=False, move_to_recycle_bin={move_to_recycle_bin})..."
@@ -487,7 +491,6 @@ class VideoManagement:
 
         logger.info(f"Finished converting {target_path.resolve()}\n")
         return True
-
 
     @staticmethod
     def convert_flv_to_mp4(
