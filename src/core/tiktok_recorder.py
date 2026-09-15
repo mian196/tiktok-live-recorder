@@ -513,6 +513,10 @@ class TikTokRecorder:
                 segment_path = f"{base_stem}-part{part_index}.flv"
                 segment_bytes = 0
                 buffer = bytearray()
+                part_reason = "Stream completed"
+
+                if part_index > 1:
+                    logger.info(f"Started recording (Part {part_index})...")
 
                 try:
                     with open(segment_path, "wb") as out_file:
@@ -529,6 +533,7 @@ class TikTokRecorder:
                                 elapsed_time = time.time() - start_time
                                 if self.duration and elapsed_time >= self.duration:
                                     stop_recording = True
+                                    part_reason = f"Duration limit reached ({self.duration}s)"
                                     break
                             else:
                                 # Stream generator completed (stream rotated or connection severed)
@@ -542,8 +547,10 @@ class TikTokRecorder:
                                     )
                                     self.notify.notify("user_offline", user=user)
                                     stop_recording = True
+                                    part_reason = "Creator ended live stream"
                                 else:
                                     status_bar.clear()
+                                    part_reason = "TikTok CDN stream connection ended"
                                     logger.info(
                                         "Stream connection ended. Refreshing live stream URL and resuming recording..."
                                     )
@@ -562,10 +569,11 @@ class TikTokRecorder:
                                 buffer.clear()
                             out_file.flush()
 
-                except ConnectionError:
+                except ConnectionError as ex:
                     status_bar.clear()
+                    part_reason = f"Network connection lost ({ex})"
                     logger.warning(
-                        "Connection lost. Resetting network session and resuming recording..."
+                        f"Connection lost ({ex}). Resetting network session and resuming recording..."
                     )
                     self._reset_session_if_available()
                     time.sleep(self.retry_delay)
@@ -577,6 +585,7 @@ class TikTokRecorder:
                         pass
                 except (RequestException, HTTPException, OSError) as ex:
                     status_bar.clear()
+                    part_reason = f"Network interruption / VPN toggle ({ex})"
                     logger.warning(
                         f"Network interruption ({ex}). Resetting session and resuming recording..."
                     )
@@ -591,10 +600,12 @@ class TikTokRecorder:
 
                 except KeyboardInterrupt:
                     status_bar.clear()
+                    part_reason = "Recording stopped by user (Ctrl+C)"
                     logger.info("Recording stopped by user.")
                     stop_recording = True
                 except Exception as ex:
                     status_bar.clear()
+                    part_reason = f"Unexpected error ({ex})"
                     logger.error(
                         f"Unexpected error during recording: {ex}",
                         exc_info=True,
@@ -603,12 +614,20 @@ class TikTokRecorder:
                     stop_recording = True
 
                 if segment_bytes >= min_stream_bytes:
+                    status_bar.clear()
+                    size_mb = segment_bytes / (1024 * 1024)
+                    logger.info(
+                        f"Part {part_index} recording completed ({size_mb:.1f} MB saved). Reason: {part_reason}."
+                    )
                     recorded_segments.append(segment_path)
                     part_index += 1
+                    if not stop_recording:
+                        logger.info(f"Continuing with Part {part_index} recording...")
                 else:
                     Path(segment_path).unlink(missing_ok=True)
                     if not stop_recording and segment_bytes == 0:
                         time.sleep(self.retry_delay)
+
 
             status_bar.finish()
 
