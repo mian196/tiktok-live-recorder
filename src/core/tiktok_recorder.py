@@ -446,12 +446,20 @@ class TikTokRecorder:
                 logger.debug(f"Error resetting session: {e}")
 
     def _build_output_path(self, user: str) -> str:
-        filename = f"{user}-{time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())}.mp4"
+        timestamp = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        base_name = f"{user}-{timestamp}"
+        output_dir = (Path(self.output) / user) if self.output else Path(".")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        candidate = output_dir / f"{base_name}.mp4"
+        counter = 1
+        while candidate.exists() or any(output_dir.glob(f"{candidate.stem}-part*.flv")):
+            candidate = output_dir / f"{base_name}_{counter}.mp4"
+            counter += 1
+
         if self.output:
-            output_dir = Path(self.output) / user
-            output_dir.mkdir(parents=True, exist_ok=True)
-            return str(output_dir / filename)
-        return filename
+            return str(candidate)
+        return candidate.name
 
     def start_recording(self, user, room_id):
         """
