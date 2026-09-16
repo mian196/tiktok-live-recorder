@@ -1,4 +1,5 @@
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 
 
@@ -33,7 +34,7 @@ class LoggerManager:
             fmt_datefmt = "%Y-%m-%d %H:%M:%S"
 
             # 1) Console INFO handler (stdout)
-            info_handler = logging.StreamHandler()
+            info_handler = logging.StreamHandler(sys.stdout)
             info_handler.setLevel(logging.INFO)
             info_handler.setFormatter(
                 logging.Formatter("[*] %(asctime)s - %(message)s", fmt_datefmt)
@@ -41,9 +42,9 @@ class LoggerManager:
             info_handler.addFilter(MaxLevelFilter(logging.INFO))
             self.logger.addHandler(info_handler)
 
-            # 2) Console ERROR handler (stderr)
-            error_handler = logging.StreamHandler()
-            error_handler.setLevel(logging.ERROR)
+            # 2) Console WARNING & ERROR handler (stderr)
+            error_handler = logging.StreamHandler(sys.stderr)
+            error_handler.setLevel(logging.WARNING)
             error_handler.setFormatter(
                 logging.Formatter("[!] %(asctime)s - %(message)s", fmt_datefmt)
             )

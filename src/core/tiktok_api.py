@@ -260,10 +260,11 @@ class TikTokAPI:
             f"{self.WEBCAST_URL}/webcast/room/info/?aid=1988&room_id={room_id}"
         ).json()
 
-        if "Follow the creator to watch their LIVE" in json.dumps(data):
+        data_str = json.dumps(data)
+        if "Follow the creator to watch their LIVE" in data_str:
             raise UserLiveError(TikTokError.ACCOUNT_PRIVATE_FOLLOW)
 
-        if "This account is private" in data:
+        if "This account is private" in data_str:
             raise UserLiveError(TikTokError.ACCOUNT_PRIVATE)
 
         display_id = data.get("data", {}).get("owner", {}).get("display_id")
@@ -282,6 +283,7 @@ class TikTokAPI:
         if response.status_code == StatusCode.REDIRECT:
             raise UserLiveError(TikTokError.COUNTRY_BLACKLISTED)
 
+        user = None
         if response.status_code == StatusCode.MOVED:  # MOBILE URL
             matches = re.findall("com/@(.*?)/live", content)
             if len(matches) < 1:
@@ -293,6 +295,9 @@ class TikTokAPI:
         match = re.match(r"https?://(?:www\.)?tiktok\.com/@([^/]+)/live", live_url)
         if match:
             user = match.group(1)
+
+        if not user:
+            raise LiveNotFound(TikTokError.INVALID_TIKTOK_LIVE_URL)
 
         room_id = self.get_room_id_from_user(user)
 
@@ -389,7 +394,7 @@ class TikTokAPI:
             "screen_height=1080&screen_width=1920&tz_name=Europe%2FRome&user_is_login=true&"
             "verifyFp=verify_mh4yf0uq_rdjp1Xwt_OoTk_4Jrf_AS8H_sp31opbnJFre&webcast_language=it-IT&"
             "msToken=GphHoLvRR4QxA5AWVwDkrs3AbumoK5H8toE8LVHtj6cce3ToGdXhMfvDWzOXG-0GXUWoaGVHrwGNA4k_NnjuFFnHgv2S5eMjsvtkAhwMPa13xLmvP7tumx0KreFjPwTNnOj-BvAkPdO5Zrev3hoFBD9lHVo=&X-Bogus=&X-Gnarly="
-        ).cookies["msToken"]
+        ).cookies.get("msToken", "")
 
         while has_more:
             url = (

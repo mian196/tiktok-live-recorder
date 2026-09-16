@@ -134,7 +134,11 @@ class Notifier:
             async def _send():
                 await self._telegram.client.connect()
                 if not await self._telegram.client.is_user_authorized():
-                    await self._telegram.client.start()
+                    logger.debug(
+                        "Telegram client is not authorized. Skipping notification."
+                    )
+                    await self._telegram.client.disconnect()
+                    return
                 await self._telegram.client.send_message(
                     self._telegram.chat_id,
                     f"<b>{title}</b>\n{message}",

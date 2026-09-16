@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from pathlib import Path
 
 from telethon import TelegramClient
@@ -15,9 +16,9 @@ class Telegram:
     def __init__(self):
         config = read_telegram_config()
 
-        self.api_id = config["api_id"]
-        self.api_hash = config["api_hash"]
-        self.chat_id = config["chat_id"]
+        self.api_id = config.get("api_id")
+        self.api_hash = config.get("api_hash")
+        self.chat_id = config.get("chat_id")
 
         self.client = TelegramClient(
             "tiktok_live_recorder_session",
@@ -35,6 +36,12 @@ class Telegram:
                 await self.client.connect()
 
                 if not await self.client.is_user_authorized():
+                    if not sys.stdin or not sys.stdin.isatty():
+                        logger.error(
+                            "Telegram client is not authorized and running without interactive TTY. "
+                            "Please run interactively to authenticate."
+                        )
+                        return
                     await self.client.start()
 
                 me = await self.client.get_me()

@@ -110,8 +110,38 @@ class HttpClient:
         logger.info(f"Testing {self.proxy}...")
         proxies = {"http": self.proxy, "https": self.proxy}
 
-        response = requests.get("https://ifconfig.me/ip", proxies=proxies, timeout=10)
-
-        if response.status_code == StatusCode.OK:
-            self.req.proxies.update(proxies)
-            logger.info("Proxy set up successfully")
+        try:
+            response = requests.get(
+                "https://ifconfig.me/ip", proxies=proxies, timeout=10
+            )
+            if response.status_code == StatusCode.OK:
+                if hasattr(self.req, "proxies") and self.req.proxies is not None:
+                    self.req.proxies.update(proxies)
+                if (
+                    hasattr(self.req_stream, "proxies")
+                    and self.req_stream.proxies is not None
+                ):
+                    self.req_stream.proxies.update(proxies)
+                logger.info("Proxy set up successfully")
+            else:
+                logger.warning(
+                    f"Proxy test returned status {response.status_code}. Setting proxy regardless."
+                )
+                if hasattr(self.req, "proxies") and self.req.proxies is not None:
+                    self.req.proxies.update(proxies)
+                if (
+                    hasattr(self.req_stream, "proxies")
+                    and self.req_stream.proxies is not None
+                ):
+                    self.req_stream.proxies.update(proxies)
+        except Exception as e:
+            logger.warning(
+                f"Proxy verification failed ({e}). Applying proxy to sessions regardless."
+            )
+            if hasattr(self.req, "proxies") and self.req.proxies is not None:
+                self.req.proxies.update(proxies)
+            if (
+                hasattr(self.req_stream, "proxies")
+                and self.req_stream.proxies is not None
+            ):
+                self.req_stream.proxies.update(proxies)

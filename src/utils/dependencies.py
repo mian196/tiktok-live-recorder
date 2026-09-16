@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import platform
 from subprocess import SubprocessError
 
@@ -54,6 +55,8 @@ def install_ffmpeg_binary():
 
 
 def check_distro_library():
+    if platform.system().lower() != "linux":
+        return True
     try:
         import distro
 
@@ -78,15 +81,7 @@ def check_ffmpeg_library():
 
 
 def check_argparse_library():
-    try:
-        import argparse
-
-        _ = argparse  # to avoid linting issues
-
-        return True
-    except ModuleNotFoundError:
-        logger.error("argparse library is not installed")
-        return False
+    return True
 
 
 def check_curl_cffi_library():
@@ -142,6 +137,18 @@ def install_requirements():
             check=True,
         )
         logger.info("Requirements installed successfully\n")
+    except FileNotFoundError:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "."],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+            logger.info("Requirements installed successfully via pip\n")
+        except Exception as e:
+            logger.error(f"Failed to install requirements: {e}")
+            exit(1)
     except SubprocessError as e:
         logger.error(f"Error: {e}")
         exit(1)
@@ -153,7 +160,6 @@ def check_and_install_dependencies():
     dependencies = [
         check_distro_library(),
         check_ffmpeg_library(),
-        check_argparse_library(),
         check_curl_cffi_library(),
         check_requests_library(),
         check_telethon_library(),

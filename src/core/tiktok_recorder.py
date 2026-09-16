@@ -19,7 +19,60 @@ from utils.user_identity import TrackedUser, parse_tracked_users
 from utils.utils import update_tracked_users_in_config
 
 
-_conversion_lock = threading.Lock()
+import os
+import tempfile
+
+
+class _ConversionLock:
+    """Cross-thread and cross-process lock for sequential video conversions."""
+
+    def __init__(self):
+        self._thread_lock = threading.Lock()
+        self._lock_file = os.path.join(
+            tempfile.gettempdir(), "tiktok_recorder_conversion.lock"
+        )
+        self._fd = None
+
+    def __enter__(self):
+        self._thread_lock.acquire()
+        try:
+            self._fd = os.open(self._lock_file, os.O_CREAT | os.O_RDWR)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(self._fd, msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(self._fd, fcntl.LOCK_EX)
+        except Exception as e:
+            logger.debug(f"Process lock warning: {e}")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self._fd is not None:
+                if os.name == "nt":
+                    import msvcrt
+
+                    try:
+                        msvcrt.locking(self._fd, msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                else:
+                    import fcntl
+
+                    try:
+                        fcntl.flock(self._fd, fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+                os.close(self._fd)
+                self._fd = None
+        finally:
+            self._thread_lock.release()
+
+
+_conversion_lock = _ConversionLock()
 
 
 class TikTokRecorder:
