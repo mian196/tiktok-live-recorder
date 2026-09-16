@@ -147,6 +147,46 @@ class VideoManagement:
                         return s_dur
         except Exception:
             pass
+
+        # Fallback for abruptly terminated recordings without FLV metadata duration header
+        try:
+            path = Path(file_path)
+            if path.exists() and path.stat().st_size > 10240:
+                import re
+                import subprocess
+
+                ffmpeg_bin = "ffmpeg"
+                if ffprobe_cmd != "ffprobe":
+                    cand = Path(ffprobe_cmd).with_name(
+                        "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+                    )
+                    if cand.exists():
+                        ffmpeg_bin = str(cand)
+                cmd = [
+                    ffmpeg_bin,
+                    "-y",
+                    "-fflags",
+                    "+genpts+discardcorrupt",
+                    "-i",
+                    str(path.resolve()),
+                    "-c",
+                    "copy",
+                    "-f",
+                    "null",
+                    "-",
+                ]
+                res = subprocess.run(
+                    cmd, capture_output=True, text=True, errors="replace"
+                )
+                matches = re.findall(r"time=(\d+):(\d+):(\d+\.\d+)", res.stderr)
+                if matches:
+                    h, m, s = matches[-1]
+                    dur = int(h) * 3600 + int(m) * 60 + float(s)
+                    if dur > 0:
+                        return dur
+        except Exception:
+            pass
+
         return 0.0
 
     @staticmethod
