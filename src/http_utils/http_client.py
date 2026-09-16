@@ -75,8 +75,13 @@ class HttpClient:
         self.req_stream.headers.update(self.headers)
 
         if self.cookies is not None:
-            self.req.cookies.update(self.cookies)
-            self.req_stream.cookies.update(self.cookies)
+            cookie_dict = dict(self.cookies)
+            if "sessionid_ss" in cookie_dict and "sessionid" not in cookie_dict:
+                cookie_dict["sessionid"] = cookie_dict["sessionid_ss"]
+            elif "sessionid" in cookie_dict and "sessionid_ss" not in cookie_dict:
+                cookie_dict["sessionid_ss"] = cookie_dict["sessionid"]
+            self.req.cookies.update(cookie_dict)
+            self.req_stream.cookies.update(cookie_dict)
 
         self.check_proxy()
 
