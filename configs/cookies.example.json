@@ -1,4 +1,5 @@
 {
-  "sessionid_ss": "",
+  "sessionid": "<YOUR_SESSION_ID>",
+  "sessionid_ss": "<YOUR_SESSIONID_SS>",
   "tt-target-idc": "useast2a"
 }
