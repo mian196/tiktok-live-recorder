@@ -126,17 +126,24 @@ class VideoManagement:
 
     @staticmethod
     def get_segment_duration(file_path: str, ffprobe_cmd: str = "ffprobe") -> float:
-        """Probe the duration of a video segment in seconds."""
+        """Probe the duration of a video segment in seconds,
+        accounting for stream start_time timestamp offsets in live FLV containers."""
         try:
             probe = ffmpeg.probe(str(file_path), cmd=ffprobe_cmd)
             fmt = probe.get("format", {})
+            start_time = float(fmt.get("start_time", 0) or 0)
             duration = float(fmt.get("duration", 0) or 0)
             if duration > 0:
+                if start_time > 0 and duration > start_time:
+                    return duration - start_time
                 return duration
             for stream in probe.get("streams", []):
                 if stream.get("codec_type") == "video":
                     s_dur = float(stream.get("duration", 0) or 0)
+                    s_start = float(stream.get("start_time", 0) or 0)
                     if s_dur > 0:
+                        if s_start > 0 and s_dur > s_start:
+                            return s_dur - s_start
                         return s_dur
         except Exception:
             pass
@@ -171,13 +178,20 @@ class VideoManagement:
 
             if min_expected_duration and min_expected_duration > 0:
                 fmt = probe.get("format", {})
+                start_time = float(fmt.get("start_time", 0) or 0)
                 duration = float(
                     fmt.get("duration", 0)
                     or (video_streams[0].get("duration", 0) if video_streams else 0)
                     or 0
                 )
-                # If output duration is significantly less than expected (>20% drop), reject copy
-                if duration > 0 and duration < (min_expected_duration * 0.80):
+                if start_time > 0 and duration > start_time:
+                    duration = duration - start_time
+                # If output duration is significantly less than expected (>5% drop and >2s drop), reject copy
+                if (
+                    duration > 0
+                    and duration < (min_expected_duration * 0.95)
+                    and (min_expected_duration - duration) > 2.0
+                ):
                     logger.warning(
                         f"Converted video duration ({duration:.1f}s) is significantly less than expected total ({min_expected_duration:.1f}s)."
                     )
