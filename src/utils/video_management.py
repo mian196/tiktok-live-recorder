@@ -186,14 +186,17 @@ class VideoManagement:
                 )
                 if start_time > 0 and duration > start_time:
                     duration = duration - start_time
-                # If output duration is significantly less than expected (>5% drop and >2s drop), reject copy
+                # If output duration is significantly less (<95%) or inflated (>130%) due to timestamp gaps, reject copy
                 if (
                     duration > 0
                     and duration < (min_expected_duration * 0.95)
                     and (min_expected_duration - duration) > 2.0
+                ) or (
+                    duration > (min_expected_duration * 1.30)
+                    and (duration - min_expected_duration) > 5.0
                 ):
                     logger.warning(
-                        f"Converted video duration ({duration:.1f}s) is significantly less than expected total ({min_expected_duration:.1f}s)."
+                        f"Converted video duration ({duration:.1f}s) differs significantly from expected total ({min_expected_duration:.1f}s)."
                     )
                     return False
 
@@ -464,10 +467,13 @@ class VideoManagement:
         duration_matched = True
         if total_expected_duration > 0:
             if actual_output_duration > 0:
-                # Tolerance: duration is at least 95% of expected duration or within 2.0 seconds
+                # Tolerance: duration is at least 95% of expected duration and not excessively stretched (>130%)
                 if (
                     actual_output_duration < (total_expected_duration * 0.95)
                     and (total_expected_duration - actual_output_duration) > 2.0
+                ) or (
+                    actual_output_duration > (total_expected_duration * 1.30)
+                    and (actual_output_duration - total_expected_duration) > 5.0
                 ):
                     duration_matched = False
             else:
