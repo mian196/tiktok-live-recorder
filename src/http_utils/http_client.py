@@ -1,8 +1,27 @@
+import socket
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from utils.enums import StatusCode
 from utils.logger_manager import logger
 from utils.utils import is_termux
+
+
+class StreamHTTPAdapter(HTTPAdapter):
+    """Custom HTTP adapter with TCP Keep-Alive to maintain streaming connection stability."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        socket_opts = list(kwargs.get("socket_options", []))
+        socket_opts.append((socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1))
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            socket_opts.append((socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30))
+        if hasattr(socket, "TCP_KEEPINTVL"):
+            socket_opts.append((socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10))
+        if hasattr(socket, "TCP_KEEPCNT"):
+            socket_opts.append((socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3))
+        kwargs["socket_options"] = socket_opts
+        super().init_poolmanager(*args, **kwargs)
 
 
 class HttpClient:
@@ -33,6 +52,13 @@ class HttpClient:
 
     def configure_session(self) -> None:
         self.req_stream = requests.Session()
+        stream_adapter = StreamHTTPAdapter(
+            pool_connections=5,
+            pool_maxsize=10,
+            max_retries=Retry(total=2, backoff_factor=0.3),
+        )
+        self.req_stream.mount("https://", stream_adapter)
+        self.req_stream.mount("http://", stream_adapter)
 
         if is_termux():
             self.req = self.req_stream
