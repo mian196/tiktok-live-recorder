@@ -61,11 +61,13 @@ def test_convert_multiple_segments_fallback_on_copy_error(tmp_path):
 
     def mock_run(**kwargs):
         calls.append(kwargs)
-        if len(calls) == 1:
-            # First call (-c copy) fails
+        # First 2 calls: pre-normalizing seg1 and seg2
+        if len(calls) == 3:
+            # 3rd call: concat copy fails
             raise ffmpeg.Error("ffmpeg", "", b"Non-monotonous DTS")
-        # Second call (transcode) succeeds
-        out.write_bytes(b"transcoded mp4 content")
+        if len(calls) >= 4:
+            # 4th call: fallback transcode succeeds
+            out.write_bytes(b"transcoded mp4 content")
 
     with patch("ffmpeg.input") as mock_input:
         mock_output = MagicMock()
@@ -77,7 +79,7 @@ def test_convert_multiple_segments_fallback_on_copy_error(tmp_path):
         )
 
         assert result is True
-        assert len(calls) == 2
+        assert len(calls) >= 4
         assert out.exists()
         assert not seg1.exists()
         assert not seg2.exists()

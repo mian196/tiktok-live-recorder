@@ -350,15 +350,42 @@ class VideoManagement:
             logger.info(
                 f"Merging {len(valid_segments)} recorded segments into {target_path.name}..."
             )
+            timestamp_ms = int(time.time() * 1000)
             manifest_file = (
-                target_path.parent
-                / f"concat_{target_path.stem}_{int(time.time() * 1000)}.txt"
+                target_path.parent / f"concat_{target_path.stem}_{timestamp_ms}.txt"
             )
+            temp_ts_files = []
             try:
+                # Pre-normalize each segment's timestamps using fast lossless MPEG-TS stream copy
+                # to prevent server timestamp gaps from stretching the final MP4 timeline
+                files_to_concat = []
+                for idx, seg in enumerate(valid_segments, start=1):
+                    ts_file = (
+                        target_path.parent
+                        / f"tmp_{target_path.stem}_{timestamp_ms}_part{idx}.ts"
+                    )
+                    try:
+                        ffmpeg.input(
+                            str(Path(seg).resolve()),
+                            fflags="+genpts+discardcorrupt",
+                        ).output(
+                            str(ts_file),
+                            c="copy",
+                            avoid_negative_ts="make_zero",
+                            y="-y",
+                        ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                        if ts_file.exists() and ts_file.stat().st_size > 1024:
+                            temp_ts_files.append(ts_file)
+                            files_to_concat.append(ts_file)
+                        else:
+                            files_to_concat.append(Path(seg))
+                    except Exception:
+                        files_to_concat.append(Path(seg))
+
                 with open(manifest_file, "w", encoding="utf-8") as f:
-                    for seg in valid_segments:
+                    for item in files_to_concat:
                         safe_path = (
-                            str(Path(seg).resolve())
+                            str(Path(item).resolve())
                             .replace("\\", "/")
                             .replace("'", "'\\''")
                         )
@@ -446,6 +473,12 @@ class VideoManagement:
                         manifest_file.unlink(missing_ok=True)
                     except OSError:
                         pass
+                for ts_f in temp_ts_files:
+                    if ts_f.exists():
+                        try:
+                            ts_f.unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
         # Strict duration and file verification before any deletion
         if (
