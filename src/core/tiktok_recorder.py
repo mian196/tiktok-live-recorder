@@ -368,7 +368,9 @@ class TikTokRecorder:
                 time.sleep(self.retry_delay)
 
     def automatic_mode_multi(self):
-        """Check all users in a loop with small delays, then sleep the full interval."""
+        """Check all users concurrently, spawning non-blocking recording threads when live."""
+        active_recordings = {}  # username -> Thread
+
         while True:
             if not self._check_disk_space():
                 logger.warning("Skipping recording check — low disk space.")
@@ -382,18 +384,33 @@ class TikTokRecorder:
             )
 
             for idx, user_obj in enumerate(target_list):
+                if user_obj.username in active_recordings:
+                    if not active_recordings[user_obj.username].is_alive():
+                        logger.info(f"Recording of @{user_obj.username} finished.")
+                        del active_recordings[user_obj.username]
+                    else:
+                        continue  # Already actively recording in background
+
                 try:
                     user_obj = self._sync_and_resolve_user(user_obj)
                     user_obj, room_id = self._check_and_recover_user_handle(user_obj)
                     if self.tracked_users and idx < len(self.tracked_users):
                         self.tracked_users[idx] = user_obj
 
-                    self.user = user_obj.username
-                    self.room_id = room_id
+                    curr_user = user_obj.username
 
-                    if self.room_id and self.tiktok.is_room_alive(self.room_id):
-                        self.notify.notify("live_detected", user=self.user)
-                        self.manual_mode()
+                    if room_id and self.tiktok.is_room_alive(room_id):
+                        logger.info(
+                            f"@{curr_user} is live. Starting simultaneous recording..."
+                        )
+                        self.notify.notify("live_detected", user=curr_user)
+                        thread = Thread(
+                            target=self.start_recording,
+                            args=(curr_user, room_id),
+                            daemon=True,
+                        )
+                        thread.start()
+                        active_recordings[curr_user] = thread
                 except (UserLiveError, LiveNotFound) as ex:
                     logger.info(ex)
                 except (
@@ -408,7 +425,7 @@ class TikTokRecorder:
                     continue
                 except Exception as ex:
                     logger.warning(
-                        f"Temporary check error for @{self.user}: {ex}. Retrying next check."
+                        f"Temporary check error for @{user_obj.username}: {ex}. Retrying next check."
                     )
                     self.tiktok.reset_session()
                     time.sleep(self.retry_delay)
@@ -416,8 +433,9 @@ class TikTokRecorder:
 
                 time.sleep(TimeOut.USER_CHECK_DELAY)
 
+            active_count = sum(1 for t in active_recordings.values() if t.is_alive())
             logger.info(
-                f"All users checked. Waiting {self.automatic_interval} minutes...\n"
+                f"All users checked ({active_count} actively recording). Waiting {self.automatic_interval} minutes...\n"
             )
             time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 

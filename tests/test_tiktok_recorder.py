@@ -266,3 +266,55 @@ def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
         segments_arg = mock_convert.call_args[0][0]
         assert len(segments_arg) == 2
         assert fake_api.session_resets >= 1
+
+
+def test_automatic_mode_multi_spawns_simultaneous_threads(monkeypatch):
+    recorded_users = []
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC,
+            users=["user_a", "user_b"],
+            automatic_interval=0,
+            retry_delay=0.01,
+        )
+    )
+
+    class MultiLiveFakeAPI:
+        def get_user_info(self, username):
+            return {"sec_uid": f"sec_{username}", "user_id": f"id_{username}"}
+
+        def get_room_id_from_user(self, username):
+            return f"room_{username}"
+
+        def is_room_alive(self, room_id):
+            return True
+
+        def reset_session(self):
+            pass
+
+    recorder.tiktok = MultiLiveFakeAPI()
+
+    def mock_start_recording(user, room_id):
+        recorded_users.append(user)
+
+    monkeypatch.setattr(recorder, "start_recording", mock_start_recording)
+
+    # Patch sleep to break the loop after one cycle
+    loop_count = 0
+
+    def mock_sleep(seconds):
+        nonlocal loop_count
+        loop_count += 1
+        if loop_count >= 3:
+            raise StopIteration("Done one multi-check cycle")
+
+    monkeypatch.setattr("time.sleep", mock_sleep)
+
+    try:
+        recorder.automatic_mode_multi()
+    except StopIteration:
+        pass
+
+    assert "user_a" in recorded_users
+    assert "user_b" in recorded_users

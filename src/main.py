@@ -34,10 +34,18 @@ def _build_config(args, mode, cookies, user=None):
     from utils.recorder_config import RecorderConfig
 
     tracked_users = getattr(args, "tracked_users", None)
+    if user and tracked_users:
+        matched_tu = [
+            tu
+            for tu in tracked_users
+            if tu.username == user or tu.sec_uid == user or tu.user_id == user
+        ]
+        tracked_users = matched_tu if matched_tu else None
+
     return RecorderConfig(
         url=args.url,
         user=user,
-        users=args.user if isinstance(args.user, list) else None,
+        users=None if user else (args.user if isinstance(args.user, list) else None),
         tracked_users=tracked_users,
         room_id=args.room_id,
         mode=mode,
@@ -57,12 +65,7 @@ def _build_config(args, mode, cookies, user=None):
 
 
 def run_recordings(args, mode, cookies):
-    if isinstance(args.user, list) and mode == Mode.AUTOMATIC:
-        # Single process checks all users with small gaps
-        config = _build_config(args, mode, cookies)
-        config.users = args.user
-        record_user(config)
-    elif isinstance(args.user, list):
+    if isinstance(args.user, list):
         processes = []
         for user in args.user:
             config = _build_config(args, mode, cookies, user=user)
