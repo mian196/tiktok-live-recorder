@@ -151,3 +151,6 @@ output/
 
 # CodeGraph
 .codegraph/
+
+# Planning & Audit files
+.planning/
