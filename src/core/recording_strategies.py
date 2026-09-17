@@ -66,10 +66,21 @@ class FFmpegStrategy(BaseRecordingStrategy):
                 "User-Agent", user_agent
             )
 
+        cookie_header = ""
+        if getattr(self.recorder, "_cookies", None) and isinstance(
+            self.recorder._cookies, dict
+        ):
+            cookie_str = "; ".join(
+                f"{k}={v}" for k, v in self.recorder._cookies.items() if v
+            )
+            if cookie_str:
+                cookie_header = f"Cookie: {cookie_str}\r\n"
+
         headers_str = (
             f"User-Agent: {user_agent}\r\n"
             "Referer: https://www.tiktok.com/\r\n"
             "Origin: https://www.tiktok.com\r\n"
+            f"{cookie_header}"
         )
 
         for index, live_url in enumerate(live_urls, start=1):
@@ -303,8 +314,6 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 "10",
                 "--fragment-retries",
                 "10",
-                "--retry-streams",
-                "10",
                 "--add-header",
                 "Referer:https://www.tiktok.com/",
                 "--add-header",
@@ -317,6 +326,14 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 cmd.extend(["--proxy", self.recorder._proxy])
             if self.recorder.ffmpeg_path:
                 cmd.extend(["--ffmpeg-location", self.recorder.ffmpeg_path])
+            if getattr(self.recorder, "_cookies", None) and isinstance(
+                self.recorder._cookies, dict
+            ):
+                cookie_str = "; ".join(
+                    f"{k}={v}" for k, v in self.recorder._cookies.items() if v
+                )
+                if cookie_str:
+                    cmd.extend(["--add-header", f"Cookie:{cookie_str}"])
 
             cmd.append(target_url)
 
@@ -381,6 +398,14 @@ class YtDlpStrategy(BaseRecordingStrategy):
                     pass
                 raise
 
+            # Capture remaining output/errors if process finished
+            stderr_msg = ""
+            if proc.stderr:
+                try:
+                    stderr_msg = proc.stderr.read().decode("utf-8", errors="replace").strip()
+                except Exception:
+                    pass
+
             if Path(final_output).exists():
                 total_bytes = Path(final_output).stat().st_size
 
@@ -398,6 +423,8 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 )
                 return True, final_output, total_bytes
             else:
+                if stderr_msg:
+                    logger.warning(f"[yt-dlp Strategy] Stream {index} failed: {stderr_msg}")
                 Path(final_output).unlink(missing_ok=True)
 
         return False, final_output, total_bytes
