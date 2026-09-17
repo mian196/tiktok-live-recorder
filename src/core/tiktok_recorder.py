@@ -350,6 +350,11 @@ class TikTokRecorder:
                 if self.room_id and self.tiktok.is_room_alive(self.room_id):
                     self.notify.notify("live_detected", user=self.user)
                     self.manual_mode()
+                else:
+                    logger.info(
+                        f"@{self.user} is not live. Waiting {self.automatic_interval} minute(s) before recheck...\n"
+                    )
+                    time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
