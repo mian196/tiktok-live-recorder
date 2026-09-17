@@ -400,7 +400,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
 
             # Capture remaining output/errors if process finished
             stderr_msg = ""
-            if proc.stderr:
+            if getattr(proc, "stderr", None):
                 try:
                     stderr_msg = proc.stderr.read().decode("utf-8", errors="replace").strip()
                 except Exception:
