@@ -778,6 +778,7 @@ class VideoManagement:
             flv_groups.setdefault(key, []).append(flv_file)
 
         for (parent_dir, base_stem), parts in flv_groups.items():
+
             def part_num(p):
                 pm = re.search(r"-part(\d+)\.flv$", p.name)
                 return int(pm.group(1)) if pm else 0

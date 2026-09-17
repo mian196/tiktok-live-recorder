@@ -402,7 +402,9 @@ class YtDlpStrategy(BaseRecordingStrategy):
             stderr_msg = ""
             if getattr(proc, "stderr", None):
                 try:
-                    stderr_msg = proc.stderr.read().decode("utf-8", errors="replace").strip()
+                    stderr_msg = (
+                        proc.stderr.read().decode("utf-8", errors="replace").strip()
+                    )
                 except Exception:
                     pass
 
@@ -424,7 +426,9 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 return True, final_output, total_bytes
             else:
                 if stderr_msg:
-                    logger.warning(f"[yt-dlp Strategy] Stream {index} failed: {stderr_msg}")
+                    logger.warning(
+                        f"[yt-dlp Strategy] Stream {index} failed: {stderr_msg}"
+                    )
                 Path(final_output).unlink(missing_ok=True)
 
         return False, final_output, total_bytes
@@ -661,9 +665,7 @@ class RequestsStrategy(BaseRecordingStrategy):
         return success, final_output, total_bytes_written
 
 
-def get_recording_strategy(
-    strategy_name: str, recorder
-) -> BaseRecordingStrategy:
+def get_recording_strategy(strategy_name: str, recorder) -> BaseRecordingStrategy:
     """Factory to retrieve the appropriate stream recording strategy."""
     clean_name = (strategy_name or "requests").strip().lower()
     if clean_name == "yt-dlp":

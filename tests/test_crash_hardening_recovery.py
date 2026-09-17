@@ -38,7 +38,10 @@ def test_recover_interrupted_with_in_progress_marker(tmp_path):
     video_file.write_bytes(b"FRAMES" * 2000)
     marker_file.touch()
 
-    with patch("utils.video_management.VideoManagement.sanitize_mp4_timestamps", return_value=True) as mock_sanitize:
+    with patch(
+        "utils.video_management.VideoManagement.sanitize_mp4_timestamps",
+        return_value=True,
+    ) as mock_sanitize:
         recovered = VideoManagement.recover_interrupted_recordings(str(tmp_path))
 
     assert recovered == 1
@@ -71,7 +74,10 @@ def test_recover_unfinalized_part_file(tmp_path):
             return True
         return False
 
-    with patch("utils.video_management.VideoManagement.sanitize_mp4_timestamps", side_effect=fake_sanitize):
+    with patch(
+        "utils.video_management.VideoManagement.sanitize_mp4_timestamps",
+        side_effect=fake_sanitize,
+    ):
         recovered = VideoManagement.recover_interrupted_recordings(str(tmp_path))
 
     assert recovered == 1
@@ -91,7 +97,10 @@ def test_recover_orphaned_flv_segments(tmp_path):
         Path(out_mp4).write_bytes(b"MERGED_MP4" * 2000)
         return True
 
-    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4", side_effect=fake_convert) as mock_conv:
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4",
+        side_effect=fake_convert,
+    ) as mock_conv:
         recovered = VideoManagement.recover_interrupted_recordings(str(tmp_path))
 
     assert recovered == 1
@@ -109,7 +118,9 @@ def test_recover_skips_already_finalized(tmp_path):
     target_mp4 = tmp_path / "user-2026-09-17.mp4"
     target_mp4.write_bytes(b"ALREADY_FINALIZED" * 1000)
 
-    with patch("utils.video_management.VideoManagement.convert_segments_to_mp4") as mock_conv:
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4"
+    ) as mock_conv:
         recovered = VideoManagement.recover_interrupted_recordings(str(tmp_path))
 
     assert recovered == 0

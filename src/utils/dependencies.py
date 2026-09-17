@@ -183,11 +183,15 @@ def check_yt_dlp_binary(yt_dlp_path="yt-dlp"):
         )
         return True
     except FileNotFoundError:
-        logger.error(f"yt-dlp binary is not found at '{yt_dlp_path}'. Please install yt-dlp or provide path via -yt-dlp-path.")
+        logger.error(
+            f"yt-dlp binary is not found at '{yt_dlp_path}'. Please install yt-dlp or provide path via -yt-dlp-path."
+        )
         return False
 
 
 def check_yt_dlp(yt_dlp_path="yt-dlp"):
     if not check_yt_dlp_binary(yt_dlp_path):
-        logger.error("Please install yt-dlp via winget install yt-dlp / pip install yt-dlp or visit: https://github.com/yt-dlp/yt-dlp")
+        logger.error(
+            "Please install yt-dlp via winget install yt-dlp / pip install yt-dlp or visit: https://github.com/yt-dlp/yt-dlp"
+        )
         exit(1)

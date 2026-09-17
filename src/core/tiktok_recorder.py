@@ -396,7 +396,9 @@ class TikTokRecorder:
 
                     try:
                         user_obj = self._sync_and_resolve_user(user_obj)
-                        user_obj, room_id = self._check_and_recover_user_handle(user_obj)
+                        user_obj, room_id = self._check_and_recover_user_handle(
+                            user_obj
+                        )
                         if self.tracked_users and idx < len(self.tracked_users):
                             self.tracked_users[idx] = user_obj
 
@@ -454,7 +456,9 @@ class TikTokRecorder:
 
                     time.sleep(TimeOut.USER_CHECK_DELAY)
 
-                active_count = sum(1 for t in active_recordings.values() if t.is_alive())
+                active_count = sum(
+                    1 for t in active_recordings.values() if t.is_alive()
+                )
                 logger.info(
                     f"All users checked ({active_count} actively recording). Waiting {self.automatic_interval} minutes...\n"
                 )
