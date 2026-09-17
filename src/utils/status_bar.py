@@ -87,11 +87,11 @@ class RecordingStatusBar:
 
             self._render(total_bytes, now - self.start_time)
 
-    def _render(self, total_bytes: int, elapsed_time: float):
+    def _render(self, total_bytes: int, elapsed_time: float, acquire_lock: bool = True):
         if not sys.stdout.isatty():
             return
 
-        with RecordingStatusBar._lock:
+        def _do_render():
             # ANSI Colors
             c_reset = "\033[0m"
             c_red_bold = "\033[1;31m"
@@ -117,7 +117,7 @@ class RecordingStatusBar:
                 part_badge = f"{c_dim}[{part_str}]{c_reset}"
 
                 status_line = (
-                    f"\r {rec_dot} {sep} {user_badge} {sep} "
+                    f" {rec_dot} {sep} {user_badge} {sep} "
                     f"{time_badge} {sep} {size_badge} {sep} "
                     f"{speed_badge} {sep} {part_badge} "
                 )
@@ -131,10 +131,32 @@ class RecordingStatusBar:
                     user_summaries.append(f"{u_badge}: {s_badge} ({spd_badge})")
 
                 multi_content = f" {sep} ".join(user_summaries)
-                status_line = f"\r {rec_dot} ({len(RecordingStatusBar._active_bars)} streams) {sep} {multi_content}"
+                status_line = f" {rec_dot} ({len(RecordingStatusBar._active_bars)} streams) {sep} {multi_content}"
 
             sys.stdout.write(f"\r\033[2K{status_line}")
             sys.stdout.flush()
+
+        if acquire_lock:
+            with RecordingStatusBar._lock:
+                _do_render()
+        else:
+            _do_render()
+
+    @classmethod
+    def render_all(cls):
+        """Re-render active status bars so the bar stays pinned at the bottom."""
+        if not sys.stdout.isatty():
+            return
+        with cls._lock:
+            if not cls._active_bars:
+                return
+            for bar in cls._active_bars.values():
+                if bar._is_active:
+                    now = time.time()
+                    bar._render(
+                        bar.last_bytes, now - bar.start_time, acquire_lock=False
+                    )
+                    break
 
     def clear(self):
         """Erase the status bar line from the terminal."""

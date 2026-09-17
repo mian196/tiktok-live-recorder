@@ -16,6 +16,37 @@ class MaxLevelFilter(logging.Filter):
         return record.levelno <= self.max_level
 
 
+class StatusBarAwareStreamHandler(logging.StreamHandler):
+    """
+    StreamHandler that clears the active status bar line before printing
+    a log message, ensuring log messages and alerts appear cleanly above
+    the status bar without spawning duplicate REC lines.
+    """
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            stream = self.stream
+            if stream.isatty():
+                # Erase current bottom line, write log message, then flush
+                stream.write(f"\r\033[2K{msg}{self.terminator}")
+                stream.flush()
+                # Re-render active status bars on the new bottom line
+                try:
+                    from utils.status_bar import RecordingStatusBar
+
+                    RecordingStatusBar.render_all()
+                except Exception:
+                    pass
+            else:
+                stream.write(f"{msg}{self.terminator}")
+                stream.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+
 class LoggerManager:
     _instance = None
 
@@ -34,7 +65,7 @@ class LoggerManager:
             fmt_datefmt = "%Y-%m-%d %H:%M:%S"
 
             # 1) Console INFO handler (stdout)
-            info_handler = logging.StreamHandler(sys.stdout)
+            info_handler = StatusBarAwareStreamHandler(sys.stdout)
             info_handler.setLevel(logging.INFO)
             info_handler.setFormatter(
                 logging.Formatter("[*] %(asctime)s - %(message)s", fmt_datefmt)
@@ -43,7 +74,7 @@ class LoggerManager:
             self.logger.addHandler(info_handler)
 
             # 2) Console WARNING & ERROR handler (stderr)
-            error_handler = logging.StreamHandler(sys.stderr)
+            error_handler = StatusBarAwareStreamHandler(sys.stderr)
             error_handler.setLevel(logging.WARNING)
             error_handler.setFormatter(
                 logging.Formatter("[!] %(asctime)s - %(message)s", fmt_datefmt)
