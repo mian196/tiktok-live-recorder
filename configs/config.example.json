@@ -19,6 +19,8 @@
   "disk_space_alert_gb": 5,
   "keep_flv": false,
   "move_to_recycle_bin": true,
+  "recording_strategy": "requests",
+  "yt_dlp_path": "yt-dlp",
   "no_update_check": false,
   "notifications": {
     "enabled": false,

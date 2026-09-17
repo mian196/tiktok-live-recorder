@@ -61,6 +61,8 @@ def _build_config(args, mode, cookies, user=None):
         move_to_recycle_bin=getattr(args, "move_to_recycle_bin", True),
         retry_delay=getattr(args, "retry_delay", 5),
         disk_space_alert_gb=getattr(args, "disk_space_alert_gb", 5),
+        recording_strategy=getattr(args, "recording_strategy", "requests"),
+        yt_dlp_path=getattr(args, "yt_dlp_path", None),
     )
 
 
@@ -95,7 +97,7 @@ def main():
     from utils.utils import read_cookies
     from utils.logger_manager import logger
     from utils.custom_exceptions import TikTokRecorderError
-    from utils.dependencies import check_ffmpeg
+    from utils.dependencies import check_ffmpeg, check_yt_dlp
     from check_updates import check_updates
 
     try:
@@ -104,6 +106,32 @@ def main():
 
         # check ffmpeg binary (supports custom path via -ffmpeg-path)
         check_ffmpeg(args.ffmpeg_path or "ffmpeg")
+
+        # check yt-dlp binary if yt-dlp strategy is chosen
+        if getattr(args, "recording_strategy", "requests") == "yt-dlp":
+            check_yt_dlp(args.yt_dlp_path or "yt-dlp")
+
+        # Auto-recovery for interrupted or crashed recordings from previous sessions
+        try:
+            from pathlib import Path
+            from utils.video_management import VideoManagement
+
+            dirs_to_scan = set()
+            if args.output:
+                dirs_to_scan.add(args.output)
+            if Path("output").is_dir():
+                dirs_to_scan.add("output")
+            if not dirs_to_scan:
+                dirs_to_scan.add(".")
+
+            for scan_dir in dirs_to_scan:
+                VideoManagement.recover_interrupted_recordings(
+                    scan_dir, ffmpeg_path=args.ffmpeg_path or "ffmpeg"
+                )
+        except Exception as e:
+            logger.warning(
+                f"[Auto-Recovery] Startup recovery check encountered an issue: {e}"
+            )
 
         # check for updates
         if args.update_check is True:

@@ -172,3 +172,22 @@ def check_and_install_dependencies():
 def check_ffmpeg(ffmpeg_path="ffmpeg"):
     if not check_ffmpeg_binary(ffmpeg_path):
         install_ffmpeg_binary()
+
+
+def check_yt_dlp_binary(yt_dlp_path="yt-dlp"):
+    try:
+        subprocess.run(
+            [yt_dlp_path, "--version"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT,
+        )
+        return True
+    except FileNotFoundError:
+        logger.error(f"yt-dlp binary is not found at '{yt_dlp_path}'. Please install yt-dlp or provide path via -yt-dlp-path.")
+        return False
+
+
+def check_yt_dlp(yt_dlp_path="yt-dlp"):
+    if not check_yt_dlp_binary(yt_dlp_path):
+        logger.error("Please install yt-dlp via winget install yt-dlp / pip install yt-dlp or visit: https://github.com/yt-dlp/yt-dlp")
+        exit(1)

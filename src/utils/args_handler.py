@@ -144,6 +144,32 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "-strategy",
+        "--strategy",
+        "-recording-strategy",
+        "--recording-strategy",
+        dest="recording_strategy",
+        default="requests",
+        choices=["requests", "flv", "ffmpeg", "yt-dlp"],
+        help=(
+            "Recording strategy: (requests, flv, ffmpeg, yt-dlp) [Default: requests]\n"
+            "[requests/flv] => Python chunked HTTP downloading (Strategy 2, legacy default).\n"
+            "[ffmpeg]       => Direct stream recording via FFmpeg (Strategy 1, fastest, no part splitting).\n"
+            "[yt-dlp]       => Live stream capture via yt-dlp (Strategy 3)."
+        ),
+        action="store",
+    )
+
+    parser.add_argument(
+        "-yt-dlp-path",
+        "--yt-dlp-path",
+        dest="yt_dlp_path",
+        help="Specify a custom path to the yt-dlp binary. [Default: 'yt-dlp']",
+        default=None,
+        action="store",
+    )
+
     from utils.utils import read_config
 
     config_defaults = read_config()
@@ -186,6 +212,15 @@ def validate_and_parse_args():
     if args.mode not in ["manual", "automatic", "followers"]:
         raise ArgsParseError(
             "Incorrect mode value. Choose between 'manual', 'automatic' or 'followers'."
+        )
+
+    if not getattr(args, "recording_strategy", None):
+        args.recording_strategy = "requests"
+    if args.recording_strategy.lower() == "flv":
+        args.recording_strategy = "requests"
+    if args.recording_strategy not in ["requests", "ffmpeg", "yt-dlp"]:
+        raise ArgsParseError(
+            "Incorrect recording_strategy value. Choose between 'requests' (or 'flv'), 'ffmpeg' or 'yt-dlp'."
         )
 
     raw_user_input = args.user or getattr(args, "users", None)

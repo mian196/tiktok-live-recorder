@@ -607,3 +607,205 @@ class VideoManagement:
             keep_flv=keep_flv,
             move_to_recycle_bin=move_to_recycle_bin,
         )
+
+    @staticmethod
+    def sanitize_mp4_timestamps(
+        input_file: str,
+        output_file: str = None,
+        ffmpeg_path: str = None,
+    ) -> bool:
+        """
+        Run a quick FFmpeg pass (-c copy -movflags +faststart) on an interrupted
+        or fragmented MP4 file to sanitize timestamps and rebuild consolidated container headers.
+        """
+        import subprocess
+
+        in_path = Path(input_file)
+        if not in_path.exists() or in_path.stat().st_size < 4096:
+            return False
+
+        temp_target = False
+        if not output_file or Path(output_file).resolve() == in_path.resolve():
+            temp_target = True
+            out_path = in_path.with_name(
+                f"{in_path.stem}_sanitized_{int(time.time() * 1000)}.mp4"
+            )
+        else:
+            out_path = Path(output_file)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        ffmpeg_bin = ffmpeg_path or "ffmpeg"
+
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-err_detect",
+            "ignore_err",
+            "-i",
+            str(in_path),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(out_path),
+        ]
+
+        try:
+            proc = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            if (
+                proc.returncode == 0
+                and out_path.exists()
+                and out_path.stat().st_size > 1024
+            ):
+                if temp_target:
+                    # Atomically replace original in_path with sanitized out_path
+                    out_path.replace(in_path)
+                return True
+            else:
+                if out_path.exists() and temp_target:
+                    out_path.unlink(missing_ok=True)
+                return False
+        except Exception as e:
+            logger.warning(f"Failed to sanitize MP4 timestamps for {input_file}: {e}")
+            if out_path.exists() and temp_target:
+                out_path.unlink(missing_ok=True)
+            return False
+
+    @staticmethod
+    def recover_interrupted_recordings(
+        output_dir: str,
+        ffmpeg_path: str = None,
+    ) -> int:
+        """
+        Scan output directory (recursively) for unfinalized or in-progress files
+        from a previous crashed session (power failure, sudden shutdown, unmerged segments):
+        1. Any file matching *.in_progress:
+           Recovers associated .mp4, sanitizes timestamps via ffmpeg -c copy -movflags +faststart,
+           and removes the in_progress marker.
+        2. Any file matching *.mp4.part or *.part:
+           Recovers .part file into finalized .mp4 via ffmpeg stream copy.
+        3. Any orphaned *-part*.flv groups without a corresponding finalized .mp4:
+           Merges the segments into a single .mp4 file.
+        Returns the total count of recovered files.
+        """
+        import re
+
+        base_dir = Path(output_dir)
+        if not base_dir.exists() or not base_dir.is_dir():
+            return 0
+
+        ffmpeg_bin = ffmpeg_path or "ffmpeg"
+        recovered_count = 0
+
+        # 1. Recover files with *.in_progress markers (crashed session remnants)
+        for marker in list(base_dir.rglob("*.in_progress")):
+            target_name = marker.name[:-12]  # strip '.in_progress'
+            target_file = marker.with_name(target_name)
+            if target_file.exists():
+                if target_file.stat().st_size >= 4096:
+                    logger.info(
+                        f"[Auto-Recovery] Found interrupted recording from crashed session: {target_file.name}"
+                    )
+                    success = VideoManagement.sanitize_mp4_timestamps(
+                        str(target_file), ffmpeg_path=ffmpeg_bin
+                    )
+                    if success:
+                        logger.info(
+                            f"[Auto-Recovery] Successfully recovered and sanitized: {target_file.name}"
+                        )
+                        recovered_count += 1
+                    else:
+                        logger.warning(
+                            f"[Auto-Recovery] Could not sanitize {target_file.name}, retaining original file."
+                        )
+                else:
+                    logger.warning(
+                        f"[Auto-Recovery] Discarding truncated incomplete recording (<4KB): {target_file.name}"
+                    )
+                    target_file.unlink(missing_ok=True)
+            marker.unlink(missing_ok=True)
+
+        # 2. Recover unfinalized part files (*.mp4.part, *.part)
+        for part_file in list(base_dir.rglob("*.part*")):
+            if part_file.name.endswith(".in_progress"):
+                continue
+            if part_file.name.endswith(".mp4.part"):
+                target_mp4 = part_file.with_name(part_file.name[:-5])  # strip .part
+            elif part_file.suffix == ".part":
+                target_mp4 = part_file.with_suffix(".mp4")
+            else:
+                continue
+
+            if part_file.exists() and part_file.stat().st_size >= 4096:
+                logger.info(
+                    f"[Auto-Recovery] Found unfinalized part file from crashed session: {part_file.name}"
+                )
+                success = VideoManagement.sanitize_mp4_timestamps(
+                    str(part_file),
+                    output_file=str(target_mp4),
+                    ffmpeg_path=ffmpeg_path,
+                )
+                if success and target_mp4.exists() and target_mp4.stat().st_size > 1024:
+                    part_file.unlink(missing_ok=True)
+                    logger.info(
+                        f"[Auto-Recovery] Successfully finalized part file to {target_mp4.name}"
+                    )
+                    recovered_count += 1
+                else:
+                    logger.warning(
+                        f"[Auto-Recovery] Failed to recover part file: {part_file.name}"
+                    )
+            elif part_file.exists():
+                part_file.unlink(missing_ok=True)
+
+        # 3. Recover orphaned *-part*.flv groups without a finalized MP4
+        flv_groups = {}
+        for flv_file in list(base_dir.rglob("*-part*.flv")):
+            m = re.match(r"^(.*?)-part\d+\.flv$", flv_file.name)
+            if not m:
+                continue
+            base_stem = m.group(1)
+            target_mp4 = flv_file.parent / f"{base_stem}.mp4"
+            if target_mp4.exists() and target_mp4.stat().st_size >= 4096:
+                # MP4 already successfully created for this stream
+                continue
+            key = (flv_file.parent, base_stem)
+            flv_groups.setdefault(key, []).append(flv_file)
+
+        for (parent_dir, base_stem), parts in flv_groups.items():
+            def part_num(p):
+                pm = re.search(r"-part(\d+)\.flv$", p.name)
+                return int(pm.group(1)) if pm else 0
+
+            sorted_parts = sorted(parts, key=part_num)
+            target_mp4 = parent_dir / f"{base_stem}.mp4"
+            logger.info(
+                f"[Auto-Recovery] Found {len(sorted_parts)} orphaned FLV segment(s) for {base_stem}. Merging to MP4..."
+            )
+            success = VideoManagement.convert_segments_to_mp4(
+                [str(p) for p in sorted_parts],
+                str(target_mp4),
+                ffmpeg_path=ffmpeg_path,
+                keep_flv=False,
+            )
+            if success and target_mp4.exists() and target_mp4.stat().st_size >= 4096:
+                logger.info(
+                    f"[Auto-Recovery] Successfully recovered orphaned FLV segments into {target_mp4.name}"
+                )
+                recovered_count += 1
+            else:
+                logger.warning(
+                    f"[Auto-Recovery] Failed to merge orphaned FLV segments for {base_stem}"
+                )
+
+        if recovered_count > 0:
+            logger.info(
+                f"[Auto-Recovery] Completed recovery scan: restored {recovered_count} interrupted recording(s)."
+            )
+
+        return recovered_count

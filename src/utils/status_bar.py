@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 
 
@@ -34,7 +35,11 @@ def _format_speed(bytes_per_sec: float) -> str:
 class RecordingStatusBar:
     """
     Sleek, responsive TUI bottom status bar for active stream recording.
+    Supports single-stream live details and multi-stream parallel summaries.
     """
+
+    _lock = threading.Lock()
+    _active_bars: dict[str, "RecordingStatusBar"] = {}
 
     def __init__(self, user: str, part: int = 1, update_interval: float = 0.5):
         self.user = user
@@ -54,6 +59,8 @@ class RecordingStatusBar:
         self.last_update_time = self.start_time
         self.last_bytes = 0
         self._is_active = True
+        with RecordingStatusBar._lock:
+            RecordingStatusBar._active_bars[self.user] = self
 
     def update(self, total_bytes: int, part: int = None):
         if not self._is_active:
@@ -84,43 +91,59 @@ class RecordingStatusBar:
         if not sys.stdout.isatty():
             return
 
-        duration_str = _format_duration(elapsed_time)
-        size_str = _format_size(total_bytes)
-        speed_str = _format_speed(self.speed)
-        part_str = f"Part {self.part}" if self.part > 1 else "Live"
+        with RecordingStatusBar._lock:
+            # ANSI Colors
+            c_reset = "\033[0m"
+            c_red_bold = "\033[1;31m"
+            c_cyan_bold = "\033[1;36m"
+            c_white_bold = "\033[1;37m"
+            c_green = "\033[1;32m"
+            c_yellow = "\033[1;33m"
+            c_dim = "\033[90m"
 
-        # ANSI Colors
-        c_reset = "\033[0m"
-        c_red_bold = "\033[1;31m"
-        c_cyan_bold = "\033[1;36m"
-        c_white_bold = "\033[1;37m"
-        c_green = "\033[1;32m"
-        c_yellow = "\033[1;33m"
-        c_dim = "\033[90m"
+            rec_dot = f"{c_red_bold}● REC{c_reset}"
+            sep = f"{c_dim}│{c_reset}"
 
-        rec_dot = f"{c_red_bold}● REC{c_reset}"
-        user_badge = f"{c_cyan_bold}@{self.user}{c_reset}"
-        time_badge = f"{c_white_bold}⏱ {duration_str}{c_reset}"
-        size_badge = f"{c_green}💾 {size_str}{c_reset}"
-        speed_badge = f"{c_yellow}⚡ {speed_str}{c_reset}"
-        part_badge = f"{c_dim}[{part_str}]{c_reset}"
-        sep = f"{c_dim}│{c_reset}"
+            if len(RecordingStatusBar._active_bars) <= 1:
+                duration_str = _format_duration(elapsed_time)
+                size_str = _format_size(total_bytes)
+                speed_str = _format_speed(self.speed)
+                part_str = f"Part {self.part}" if self.part > 1 else "Live"
 
-        status_line = (
-            f"\r {rec_dot} {sep} {user_badge} {sep} "
-            f"{time_badge} {sep} {size_badge} {sep} "
-            f"{speed_badge} {sep} {part_badge} "
-        )
+                user_badge = f"{c_cyan_bold}@{self.user}{c_reset}"
+                time_badge = f"{c_white_bold}⏱ {duration_str}{c_reset}"
+                size_badge = f"{c_green}💾 {size_str}{c_reset}"
+                speed_badge = f"{c_yellow}⚡ {speed_str}{c_reset}"
+                part_badge = f"{c_dim}[{part_str}]{c_reset}"
 
-        sys.stdout.write(f"\r\033[2K{status_line}")
-        sys.stdout.flush()
+                status_line = (
+                    f"\r {rec_dot} {sep} {user_badge} {sep} "
+                    f"{time_badge} {sep} {size_badge} {sep} "
+                    f"{speed_badge} {sep} {part_badge} "
+                )
+            else:
+                # Multi-stream summary display
+                user_summaries = []
+                for u, bar in list(RecordingStatusBar._active_bars.items()):
+                    u_badge = f"{c_cyan_bold}@{u}{c_reset}"
+                    s_badge = f"{c_green}{_format_size(bar.last_bytes)}{c_reset}"
+                    spd_badge = f"{c_yellow}{_format_speed(bar.speed)}{c_reset}"
+                    user_summaries.append(f"{u_badge}: {s_badge} ({spd_badge})")
+
+                multi_content = f" {sep} ".join(user_summaries)
+                status_line = f"\r {rec_dot} ({len(RecordingStatusBar._active_bars)} streams) {sep} {multi_content}"
+
+            sys.stdout.write(f"\r\033[2K{status_line}")
+            sys.stdout.flush()
 
     def clear(self):
         """Erase the status bar line from the terminal."""
-        if self._is_active and sys.stdout.isatty():
-            sys.stdout.write("\r\033[2K\r")
-            sys.stdout.flush()
-        self._is_active = False
+        with RecordingStatusBar._lock:
+            RecordingStatusBar._active_bars.pop(self.user, None)
+            if self._is_active and sys.stdout.isatty():
+                sys.stdout.write("\r\033[2K\r")
+                sys.stdout.flush()
+            self._is_active = False
 
     def finish(self, message: str = None):
         """End status bar and optionally print a message."""
