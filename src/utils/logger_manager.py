@@ -51,22 +51,33 @@ class LoggerManager:
             self.logger.addHandler(error_handler)
 
             # 3) File handler — DEBUG level, includes full stack traces
-            #    Rotates at 5 MB, keeps 3 backups
-            #    Stored in output/logs/
+            #    Creates a dedicated log file per run session and keeps at most 10 log files
+            import os
+            from datetime import datetime
             from pathlib import Path
 
             script_dir = Path(__file__).resolve().parents[2]
             log_dir = script_dir / "output" / "logs"
+
+            env_log_file = os.environ.get("TIKTOK_RECORDER_LOG_FILE")
+            if not env_log_file:
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                log_filename = f"tiktok-recorder-{timestamp}.log"
+                os.environ["TIKTOK_RECORDER_LOG_FILE"] = log_filename
+            else:
+                log_filename = env_log_file
+
             try:
                 log_dir.mkdir(parents=True, exist_ok=True)
-                log_file = log_dir / "tiktok-recorder.log"
+                log_file = log_dir / log_filename
+                self.cleanup_old_logs(log_dir, max_files=10, current_file=log_file)
             except OSError:
-                log_file = Path("tiktok-recorder.log")
+                log_file = Path(log_filename)
 
             file_handler = RotatingFileHandler(
                 str(log_file),
-                maxBytes=5 * 1024 * 1024,
-                backupCount=3,
+                maxBytes=10 * 1024 * 1024,
+                backupCount=0,
                 encoding="utf-8",
             )
             file_handler.setLevel(logging.DEBUG)
@@ -76,6 +87,33 @@ class LoggerManager:
                 )
             )
             self.logger.addHandler(file_handler)
+
+    @staticmethod
+    def cleanup_old_logs(log_dir, max_files=10, current_file=None):
+        """Keep at most max_files log files in log_dir, deleting the oldest."""
+        try:
+            if not log_dir or not log_dir.exists():
+                return
+            log_files = sorted(
+                [
+                    f
+                    for f in log_dir.glob("tiktok-recorder*.log")
+                    if f.is_file()
+                    and (not current_file or f.resolve() != current_file.resolve())
+                ],
+                key=lambda p: p.stat().st_mtime,
+            )
+            # Allow max_files - 1 existing files if a new file is being created
+            allowed_existing = max(0, max_files - 1)
+            if len(log_files) > allowed_existing:
+                to_remove = log_files[: len(log_files) - allowed_existing]
+                for f in to_remove:
+                    try:
+                        f.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
 
 logger = LoggerManager().logger
