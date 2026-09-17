@@ -161,6 +161,7 @@ class FFmpegStrategy(BaseRecordingStrategy):
                 continue
 
             start_time = time.time()
+            last_room_check = start_time
             if status_bar:
                 status_bar.start()
 
@@ -180,6 +181,24 @@ class FFmpegStrategy(BaseRecordingStrategy):
                         except subprocess.TimeoutExpired:
                             proc.terminate()
                         break
+
+                    # Check room status every 5 seconds to prevent hanging on stalled streams
+                    if time.time() - last_room_check >= 5.0:
+                        last_room_check = time.time()
+                        is_alive, is_confirmed = self.recorder._verify_room_status(
+                            room_id
+                        )
+                        if is_confirmed and not is_alive:
+                            logger.info(f"User @{user} is no longer live. Stopping recording.")
+                            self.recorder.notify.notify("user_offline", user=user)
+                            try:
+                                if proc.stdin:
+                                    proc.stdin.write(b"q\n")
+                                    proc.stdin.flush()
+                                proc.wait(timeout=5)
+                            except Exception:
+                                proc.terminate()
+                            break
 
                     # Monitor duration if specified
                     elapsed = time.time() - start_time
@@ -310,6 +329,8 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 yt_dlp_bin,
                 "--no-part",
                 "--no-warnings",
+                "--socket-timeout",
+                "15",
                 "--retries",
                 "10",
                 "--fragment-retries",
@@ -352,6 +373,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 continue
 
             start_time = time.time()
+            last_room_check = start_time
             if status_bar:
                 status_bar.start()
 
@@ -365,6 +387,24 @@ class YtDlpStrategy(BaseRecordingStrategy):
                         except subprocess.TimeoutExpired:
                             proc.kill()
                         break
+
+                    # Check room status every 5 seconds to prevent hanging on stalled streams
+                    if time.time() - last_room_check >= 5.0:
+                        last_room_check = time.time()
+                        is_alive, is_confirmed = self.recorder._verify_room_status(
+                            room_id
+                        )
+                        if is_confirmed and not is_alive:
+                            logger.info(
+                                f"User @{user} is no longer live. Stopping yt-dlp recording."
+                            )
+                            self.recorder.notify.notify("user_offline", user=user)
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                proc.kill()
+                            break
 
                     # Monitor duration
                     elapsed = time.time() - start_time
