@@ -154,6 +154,9 @@ def main():
 
     except KeyboardInterrupt:
         logger.info("Quitting TikTok Live Recorder...")
+        import os
+
+        os._exit(0)
 
     except TikTokRecorderError as ex:
         logger.error(f"Application Error: {ex}")
@@ -193,3 +196,6 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n[*] Quitting TikTok Live Recorder...")
+        import os
+
+        os._exit(0)

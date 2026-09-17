@@ -429,7 +429,7 @@ class TikTokRecorder:
                             thread = Thread(
                                 target=_runner,
                                 name=f"Recorder-{curr_user}",
-                                daemon=False,
+                                daemon=True,
                             )
                             thread.stop_event = stop_event
                             thread.start()
