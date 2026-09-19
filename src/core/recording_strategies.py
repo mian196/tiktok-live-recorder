@@ -189,7 +189,9 @@ class FFmpegStrategy(BaseRecordingStrategy):
                             room_id
                         )
                         if is_confirmed and not is_alive:
-                            logger.info(f"User @{user} is no longer live. Stopping recording.")
+                            logger.info(
+                                f"User @{user} is no longer live. Stopping recording."
+                            )
                             self.recorder.notify.notify("user_offline", user=user)
                             try:
                                 if proc.stdin:

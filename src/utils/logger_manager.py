@@ -28,10 +28,14 @@ class StatusBarAwareStreamHandler(logging.StreamHandler):
             msg = self.format(record)
             stream = self.stream
             if stream.isatty():
-                # Erase current bottom line, write log message, then flush
-                stream.write(f"\r\033[2K{msg}{self.terminator}")
+                try:
+                    from utils.status_bar import RecordingStatusBar
+
+                    RecordingStatusBar.clear_display_for_log()
+                except Exception:
+                    pass
+                stream.write(f"{msg}{self.terminator}")
                 stream.flush()
-                # Re-render active status bars on the new bottom line
                 try:
                     from utils.status_bar import RecordingStatusBar
 

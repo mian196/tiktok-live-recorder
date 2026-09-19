@@ -59,3 +59,26 @@ def test_status_bar_clear_and_finish():
 
     output = fake_stdout.getvalue()
     assert "\033[2K" in output
+
+
+def test_multiple_status_bars_render_each_user_on_separate_lines():
+    fake_stdout = io.StringIO()
+    fake_stdout.isatty = lambda: True
+
+    bar1 = RecordingStatusBar("user_one", part=1, update_interval=0.0)
+    bar2 = RecordingStatusBar("user_two", part=1, update_interval=0.0)
+
+    with patch("sys.stdout", fake_stdout):
+        bar1.start()
+        bar2.start()
+        bar1.update(5 * 1024 * 1024, part=1)
+        bar2.update(12 * 1024 * 1024, part=1)
+
+        output = fake_stdout.getvalue()
+        assert "@user_one" in output
+        assert "@user_two" in output
+        assert "5.0 MB" in output
+        assert "12.0 MB" in output
+
+        bar1.finish()
+        bar2.finish()
