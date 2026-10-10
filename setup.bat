@@ -103,7 +103,7 @@ if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\TikTok_Live_Re
     del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\TikTok_Live_Recorder.bat" >nul 2>&1
 )
 
-powershell -ExecutionPolicy Bypass -Command "$scriptDir = '%SCRIPT_DIR%'; $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('\"' + $scriptDir + '\silent_start.vbs\"') -WorkingDirectory $scriptDir; $trigger = New-ScheduledTaskTrigger -AtLogOn; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -Compatibility Win8; $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings; Register-ScheduledTask -TaskName 'TikTok_Live_Recorder' -InputObject $task -Force" >nul 2>&1
+powershell -ExecutionPolicy Bypass -Command "$scriptDir = '%SCRIPT_DIR%'; $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c \"' + $scriptDir + '\start.bat\"') -WorkingDirectory $scriptDir; $trigger = New-ScheduledTaskTrigger -AtLogOn; $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -Compatibility Win8; $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings; Register-ScheduledTask -TaskName 'TikTok_Live_Recorder' -InputObject $task -Force" >nul 2>&1
 if %errorlevel% EQU 0 (
     echo [SUCCESS] Windows Task Scheduler task 'TikTok_Live_Recorder' registered successfully!
     echo [SUCCESS] Visible in Task Scheduler Library and set to run automatically on logon.

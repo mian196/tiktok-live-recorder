@@ -125,3 +125,34 @@ def test_recover_skips_already_finalized(tmp_path):
 
     assert recovered == 0
     mock_conv.assert_not_called()
+
+
+def test_recover_skips_files_newer_than_max_mtime(tmp_path):
+    import os
+    import time
+
+    old_seg = tmp_path / "olduser-2026-09-17-part1.flv"
+    old_seg.write_bytes(b"FLV1" * 1000)
+    cutoff = time.time()
+    os.utime(str(old_seg), (cutoff - 100, cutoff - 100))
+
+    new_seg = tmp_path / "newuser-2026-09-17-part1.flv"
+    new_seg.write_bytes(b"FLV2" * 1000)
+    os.utime(str(new_seg), (cutoff + 100, cutoff + 100))
+
+    def fake_convert(segments, out_mp4, **kwargs):
+        Path(out_mp4).write_bytes(b"MERGED_MP4" * 2000)
+        return True
+
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4",
+        side_effect=fake_convert,
+    ) as mock_conv:
+        recovered = VideoManagement.recover_interrupted_recordings(
+            str(tmp_path), max_mtime=cutoff
+        )
+
+    assert recovered == 1
+    # Only old_seg should have been recovered
+    assert (tmp_path / "olduser-2026-09-17.mp4").exists()
+    assert not (tmp_path / "newuser-2026-09-17.mp4").exists()

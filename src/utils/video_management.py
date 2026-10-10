@@ -680,6 +680,7 @@ class VideoManagement:
     def recover_interrupted_recordings(
         output_dir: str,
         ffmpeg_path: str = None,
+        max_mtime: float = None,
     ) -> int:
         """
         Scan output directory (recursively) for unfinalized or in-progress files
@@ -704,6 +705,12 @@ class VideoManagement:
 
         # 1. Recover files with *.in_progress markers (crashed session remnants)
         for marker in list(base_dir.rglob("*.in_progress")):
+            if max_mtime is not None:
+                try:
+                    if marker.stat().st_mtime > max_mtime:
+                        continue
+                except OSError:
+                    continue
             target_name = marker.name[:-12]  # strip '.in_progress'
             target_file = marker.with_name(target_name)
             if target_file.exists():
@@ -734,6 +741,12 @@ class VideoManagement:
         for part_file in list(base_dir.rglob("*.part*")):
             if part_file.name.endswith(".in_progress"):
                 continue
+            if max_mtime is not None:
+                try:
+                    if part_file.stat().st_mtime > max_mtime:
+                        continue
+                except OSError:
+                    continue
             if part_file.name.endswith(".mp4.part"):
                 target_mp4 = part_file.with_name(part_file.name[:-5])  # strip .part
             elif part_file.suffix == ".part":
@@ -766,6 +779,12 @@ class VideoManagement:
         # 3. Recover orphaned *-part*.flv groups without a finalized MP4
         flv_groups = {}
         for flv_file in list(base_dir.rglob("*-part*.flv")):
+            if max_mtime is not None:
+                try:
+                    if flv_file.stat().st_mtime > max_mtime:
+                        continue
+                except OSError:
+                    continue
             m = re.match(r"^(.*?)-part\d+\.flv$", flv_file.name)
             if not m:
                 continue
@@ -788,12 +807,22 @@ class VideoManagement:
             logger.info(
                 f"[Auto-Recovery] Found {len(sorted_parts)} orphaned FLV segment(s) for {base_stem}. Merging to MP4..."
             )
-            success = VideoManagement.convert_segments_to_mp4(
-                [str(p) for p in sorted_parts],
-                str(target_mp4),
-                ffmpeg_path=ffmpeg_path,
-                keep_flv=False,
-            )
+            try:
+                from core.tiktok_recorder import _conversion_lock
+
+                lock_ctx = _conversion_lock
+            except Exception:
+                from contextlib import nullcontext
+
+                lock_ctx = nullcontext()
+
+            with lock_ctx:
+                success = VideoManagement.convert_segments_to_mp4(
+                    [str(p) for p in sorted_parts],
+                    str(target_mp4),
+                    ffmpeg_path=ffmpeg_path,
+                    keep_flv=False,
+                )
             if success and target_mp4.exists() and target_mp4.stat().st_size >= 4096:
                 logger.info(
                     f"[Auto-Recovery] Successfully recovered orphaned FLV segments into {target_mp4.name}"

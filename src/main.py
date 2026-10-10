@@ -111,27 +111,41 @@ def main():
         if getattr(args, "recording_strategy", "requests") == "yt-dlp":
             check_yt_dlp(args.yt_dlp_path or "yt-dlp")
 
-        # Auto-recovery for interrupted or crashed recordings from previous sessions
-        try:
-            from pathlib import Path
-            from utils.video_management import VideoManagement
+        # Auto-recovery for interrupted or crashed recordings from previous sessions (runs in background)
+        startup_time = time.time()
 
-            dirs_to_scan = set()
-            if args.output:
-                dirs_to_scan.add(args.output)
-            if Path("output").is_dir():
-                dirs_to_scan.add("output")
-            if not dirs_to_scan:
-                dirs_to_scan.add(".")
+        def _run_background_recovery():
+            try:
+                from pathlib import Path
+                from utils.video_management import VideoManagement
 
-            for scan_dir in dirs_to_scan:
-                VideoManagement.recover_interrupted_recordings(
-                    scan_dir, ffmpeg_path=args.ffmpeg_path or "ffmpeg"
+                dirs_to_scan = set()
+                if args.output:
+                    dirs_to_scan.add(args.output)
+                if Path("output").is_dir():
+                    dirs_to_scan.add("output")
+                if not dirs_to_scan:
+                    dirs_to_scan.add(".")
+
+                for scan_dir in dirs_to_scan:
+                    VideoManagement.recover_interrupted_recordings(
+                        scan_dir,
+                        ffmpeg_path=args.ffmpeg_path or "ffmpeg",
+                        max_mtime=startup_time,
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[Auto-Recovery] Background recovery check encountered an issue: {e}"
                 )
-        except Exception as e:
-            logger.warning(
-                f"[Auto-Recovery] Startup recovery check encountered an issue: {e}"
-            )
+
+        import threading
+
+        recovery_thread = threading.Thread(
+            target=_run_background_recovery,
+            name="AutoRecoveryThread",
+            daemon=True,
+        )
+        recovery_thread.start()
 
         # check for updates
         if args.update_check is True:
