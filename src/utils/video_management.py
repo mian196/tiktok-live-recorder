@@ -681,6 +681,8 @@ class VideoManagement:
         output_dir: str,
         ffmpeg_path: str = None,
         max_mtime: float = None,
+        keep_flv: bool = False,
+        move_to_recycle_bin: bool = True,
     ) -> int:
         """
         Scan output directory (recursively) for unfinalized or in-progress files
@@ -821,7 +823,8 @@ class VideoManagement:
                     [str(p) for p in sorted_parts],
                     str(target_mp4),
                     ffmpeg_path=ffmpeg_path,
-                    keep_flv=False,
+                    keep_flv=keep_flv,
+                    move_to_recycle_bin=move_to_recycle_bin,
                 )
             if success and target_mp4.exists() and target_mp4.stat().st_size >= 4096:
                 logger.info(

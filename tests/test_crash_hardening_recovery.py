@@ -101,7 +101,11 @@ def test_recover_orphaned_flv_segments(tmp_path):
         "utils.video_management.VideoManagement.convert_segments_to_mp4",
         side_effect=fake_convert,
     ) as mock_conv:
-        recovered = VideoManagement.recover_interrupted_recordings(str(tmp_path))
+        recovered = VideoManagement.recover_interrupted_recordings(
+            str(tmp_path),
+            keep_flv=True,
+            move_to_recycle_bin=False,
+        )
 
     assert recovered == 1
     assert target_mp4.exists()
@@ -110,6 +114,8 @@ def test_recover_orphaned_flv_segments(tmp_path):
     assert len(called_segments) == 2
     assert str(seg1) in called_segments[0]
     assert str(seg2) in called_segments[1]
+    assert mock_conv.call_args.kwargs.get("keep_flv") is True
+    assert mock_conv.call_args.kwargs.get("move_to_recycle_bin") is False
 
 
 def test_recover_skips_already_finalized(tmp_path):
@@ -153,6 +159,7 @@ def test_recover_skips_files_newer_than_max_mtime(tmp_path):
         )
 
     assert recovered == 1
+    mock_conv.assert_called_once()
     # Only old_seg should have been recovered
     assert (tmp_path / "olduser-2026-09-17.mp4").exists()
     assert not (tmp_path / "newuser-2026-09-17.mp4").exists()

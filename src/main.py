@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import multiprocessing
 from utils.enums import Mode
 
@@ -132,6 +133,8 @@ def main():
                         scan_dir,
                         ffmpeg_path=args.ffmpeg_path or "ffmpeg",
                         max_mtime=startup_time,
+                        keep_flv=getattr(args, "keep_flv", False),
+                        move_to_recycle_bin=getattr(args, "move_to_recycle_bin", True),
                     )
             except Exception as e:
                 logger.warning(
