@@ -82,3 +82,25 @@ def test_multiple_status_bars_render_each_user_on_separate_lines():
 
         bar1.finish()
         bar2.finish()
+
+
+def test_multiple_status_bars_same_user_render_cleanly():
+    fake_stdout = io.StringIO()
+    fake_stdout.isatty = lambda: True
+
+    bar1 = RecordingStatusBar("same_user", part=1, update_interval=0.0)
+    bar2 = RecordingStatusBar("same_user", part=2, update_interval=0.0)
+
+    with patch("sys.stdout", fake_stdout):
+        bar1.start()
+        bar2.start()
+        bar1.update(10 * 1024 * 1024, part=1)
+        bar2.update(20 * 1024 * 1024, part=2)
+
+        output = fake_stdout.getvalue()
+        assert "@same_user" in output
+        assert "10.0 MB" in output
+        assert "20.0 MB" in output
+
+        bar1.finish()
+        bar2.finish()

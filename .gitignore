@@ -154,3 +154,9 @@ output/
 
 # Planning & Audit files
 .planning/
+
+# Status registry files
+.status/
+*.status.json
+output/logs/.status/
+output/logs/status/

@@ -1,9 +1,11 @@
+import atexit
 import json
 import os
 import sys
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 
 def _format_duration(seconds: float) -> str:
@@ -37,11 +39,10 @@ def _format_speed(bytes_per_sec: float) -> str:
 class _CrossProcessRenderLock:
     """Cross-thread and cross-process lock for console status bar rendering."""
 
-    def __init__(self):
+    def __init__(self, lock_dir=None):
         self._thread_lock = threading.Lock()
-        self._lock_file = os.path.join(
-            tempfile.gettempdir(), "tiktok_recorder_statusbar.lock"
-        )
+        target_dir = lock_dir or _STATUS_DIR
+        self._lock_file = os.path.join(target_dir, "tiktok_recorder_statusbar.lock")
         self._fd = None
 
     def __enter__(self):
@@ -85,8 +86,15 @@ class _CrossProcessRenderLock:
             self._thread_lock.release()
 
 
-_render_lock = _CrossProcessRenderLock()
-_STATUS_DIR = os.path.join(tempfile.gettempdir(), "tiktok_live_status_registry")
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+try:
+    _STATUS_DIR = str(_PROJECT_ROOT / "output" / "logs" / ".status")
+    os.makedirs(_STATUS_DIR, exist_ok=True)
+except Exception:
+    _STATUS_DIR = os.path.join(tempfile.gettempdir(), "tiktok_live_status_registry")
+    os.makedirs(_STATUS_DIR, exist_ok=True)
+
+_render_lock = _CrossProcessRenderLock(_STATUS_DIR)
 
 
 class RecordingStatusBar:
@@ -116,9 +124,20 @@ class RecordingStatusBar:
         except Exception:
             pass
 
+        try:
+            atexit.register(self._remove_from_file)
+        except Exception:
+            pass
+
+    def __del__(self):
+        try:
+            self._remove_from_file()
+        except Exception:
+            pass
+
     def _get_status_file(self) -> str:
         safe_user = "".join(c for c in self.user if c.isalnum() or c in ("-", "_"))
-        return os.path.join(_STATUS_DIR, f"{safe_user}.json")
+        return os.path.join(_STATUS_DIR, f"{safe_user}_{os.getpid()}_{id(self)}.json")
 
     def _sync_to_file(self, total_bytes: int):
         try:
@@ -130,6 +149,7 @@ class RecordingStatusBar:
                 "part": self.part,
                 "updated_at": time.time(),
                 "pid": os.getpid(),
+                "instance_id": id(self),
             }
             status_file = self._get_status_file()
             tmp_file = f"{status_file}.tmp"
@@ -152,7 +172,7 @@ class RecordingStatusBar:
         self.last_update_time = self.start_time
         self.last_bytes = 0
         self._is_active = True
-        RecordingStatusBar._active_bars[self.user] = self
+        RecordingStatusBar._active_bars[f"{self.user}_{id(self)}"] = self
         self._sync_to_file(0)
 
     def update(self, total_bytes: int, part: int = None):
@@ -197,7 +217,8 @@ class RecordingStatusBar:
                             with open(fpath, "r", encoding="utf-8") as f:
                                 data = json.load(f)
                             if now - data.get("updated_at", 0) <= 5.0:
-                                streams[data["user"]] = data
+                                key = f"{data['user']}_{data.get('pid', '')}_{data.get('instance_id', fname)}"
+                                streams[key] = data
                             else:
                                 os.remove(fpath)
                         except Exception:
@@ -206,9 +227,10 @@ class RecordingStatusBar:
                 pass
 
         # 2. Check local in-memory active bars
-        for u, bar in list(cls._active_bars.items()):
+        for inst_key, bar in list(cls._active_bars.items()):
             if bar._is_active:
-                streams[u] = {
+                key = f"{bar.user}_{os.getpid()}_{id(bar)}"
+                streams[key] = {
                     "user": bar.user,
                     "start_time": bar.start_time,
                     "last_bytes": bar.last_bytes,
@@ -216,18 +238,22 @@ class RecordingStatusBar:
                     "part": bar.part,
                     "updated_at": now,
                     "pid": os.getpid(),
+                    "instance_id": id(bar),
                 }
 
-        return sorted(streams.values(), key=lambda s: s["user"].lower())
+        return sorted(
+            streams.values(), key=lambda s: (s["user"].lower(), s.get("pid", 0))
+        )
 
     @classmethod
-    def _format_stream_line(cls, stream: dict) -> str:
+    def _format_stream_line(cls, stream: dict, has_multiple: bool = False) -> str:
         now = time.time()
         elapsed_time = max(0, now - stream.get("start_time", now))
         total_bytes = stream.get("last_bytes", 0)
         speed = stream.get("speed", 0.0)
         part = stream.get("part", 1)
         user = stream.get("user", "recorder")
+        pid = stream.get("pid")
 
         # ANSI Colors
         c_reset = "\033[0m"
@@ -246,7 +272,12 @@ class RecordingStatusBar:
         speed_str = _format_speed(speed)
         part_str = f"Part {part}" if part > 1 else "Live"
 
-        user_badge = f"{c_cyan_bold}@{user}{c_reset}"
+        if has_multiple and pid:
+            user_label = f"@{user} #{pid}"
+        else:
+            user_label = f"@{user}"
+
+        user_badge = f"{c_cyan_bold}{user_label}{c_reset}"
         time_badge = f"{c_white_bold}⏱ {duration_str}{c_reset}"
         size_badge = f"{c_green}💾 {size_str}{c_reset}"
         speed_badge = f"{c_yellow}⚡ {speed_str}{c_reset}"
@@ -268,7 +299,16 @@ class RecordingStatusBar:
                 RecordingStatusBar._erase_rendered_lines()
                 return
 
-            lines = [self._format_stream_line(s) for s in streams]
+            user_counts = {}
+            for s in streams:
+                user_counts[s["user"]] = user_counts.get(s["user"], 0) + 1
+
+            lines = [
+                self._format_stream_line(
+                    s, has_multiple=(user_counts.get(s["user"], 0) > 1)
+                )
+                for s in streams
+            ]
             RecordingStatusBar._draw_lines(lines)
 
     @classmethod
@@ -333,18 +373,34 @@ class RecordingStatusBar:
         with _render_lock:
             streams = cls._collect_all_active_streams()
             if streams:
-                lines = [cls._format_stream_line(s) for s in streams]
+                user_counts = {}
+                for s in streams:
+                    user_counts[s["user"]] = user_counts.get(s["user"], 0) + 1
+                lines = [
+                    cls._format_stream_line(
+                        s, has_multiple=(user_counts.get(s["user"], 0) > 1)
+                    )
+                    for s in streams
+                ]
                 cls._draw_lines(lines)
 
     def clear(self):
         """Erase this user from status bar."""
         self._remove_from_file()
-        RecordingStatusBar._active_bars.pop(self.user, None)
+        RecordingStatusBar._active_bars.pop(f"{self.user}_{id(self)}", None)
         self._is_active = False
         with _render_lock:
             streams = RecordingStatusBar._collect_all_active_streams()
             if streams:
-                lines = [RecordingStatusBar._format_stream_line(s) for s in streams]
+                user_counts = {}
+                for s in streams:
+                    user_counts[s["user"]] = user_counts.get(s["user"], 0) + 1
+                lines = [
+                    RecordingStatusBar._format_stream_line(
+                        s, has_multiple=(user_counts.get(s["user"], 0) > 1)
+                    )
+                    for s in streams
+                ]
                 RecordingStatusBar._draw_lines(lines)
             else:
                 RecordingStatusBar._erase_rendered_lines()
