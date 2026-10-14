@@ -1,10 +1,7 @@
-from pathlib import Path
-import threading
 from unittest.mock import MagicMock, patch
 
 
 from core.recording_strategies import (
-    FFmpegStrategy,
     RequestsStrategy,
     YtDlpStrategy,
     get_recording_strategy,
@@ -30,133 +27,14 @@ class FakeRecorder:
 
 def test_get_recording_strategy_factory():
     rec = FakeRecorder()
-    assert isinstance(get_recording_strategy("ffmpeg", rec), FFmpegStrategy)
-    assert isinstance(get_recording_strategy("FFMPEG", rec), FFmpegStrategy)
+    assert isinstance(get_recording_strategy("ffmpeg", rec), RequestsStrategy)
+    assert isinstance(get_recording_strategy("FFMPEG", rec), RequestsStrategy)
     assert isinstance(get_recording_strategy("requests", rec), RequestsStrategy)
     assert isinstance(get_recording_strategy("flv", rec), RequestsStrategy)
     assert isinstance(get_recording_strategy("FLV", rec), RequestsStrategy)
     assert isinstance(get_recording_strategy("yt-dlp", rec), YtDlpStrategy)
     assert isinstance(get_recording_strategy("unknown", rec), RequestsStrategy)
     assert isinstance(get_recording_strategy(None, rec), RequestsStrategy)
-
-
-def test_ffmpeg_strategy_command_execution(tmp_path):
-    out_file = tmp_path / "test.mp4"
-    rec = FakeRecorder(duration=10, bitrate="2M", proxy="http://127.0.0.1:8080")
-    strategy = FFmpegStrategy(rec)
-
-    captured_cmds = []
-
-    class FakeProc:
-        def __init__(self, cmd, **kwargs):
-            captured_cmds.append(cmd)
-            self.stdin = MagicMock()
-            self.stdout = MagicMock()
-            self.stderr = MagicMock()
-            self.returncode = 0
-            # Create the output file to simulate successful stream capture
-            out_file.write_bytes(b"F" * 8192)
-
-        def poll(self):
-            return 0
-
-        def wait(self, timeout=None):
-            return 0
-
-        def communicate(self, *args, **kwargs):
-            return b"", b""
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-    with patch("subprocess.Popen", side_effect=FakeProc):
-        success, path, total_bytes = strategy.record(
-            user="streamer1",
-            room_id="123",
-            live_urls=["https://cdn/live.m3u8"],
-            final_output=str(out_file),
-        )
-
-    assert success is True
-    assert total_bytes == 8192
-    assert len(captured_cmds) == 2
-
-    # Verify recording command with fragmented MP4 flags
-    rec_cmd = captured_cmds[0]
-    assert rec_cmd[0] == "ffmpeg"
-    assert "-reconnect" in rec_cmd
-    assert "-http_proxy" in rec_cmd
-    assert "http://127.0.0.1:8080" in rec_cmd
-    assert "-b:v" in rec_cmd
-    assert "2M" in rec_cmd
-    assert "-t" in rec_cmd
-    assert "10" in rec_cmd
-    assert "-c" in rec_cmd
-    assert "copy" in rec_cmd
-    assert "-movflags" in rec_cmd
-    assert "+empty_moov+frag_keyframe+default_base_moof" in rec_cmd
-    assert str(out_file) in rec_cmd
-    assert not Path(f"{out_file}.in_progress").exists()
-
-    # Verify sanitization command with faststart
-    san_cmd = captured_cmds[1]
-    assert san_cmd[0] == "ffmpeg"
-    assert "-err_detect" in san_cmd
-    assert "ignore_err" in san_cmd
-    assert "-movflags" in san_cmd
-    assert "+faststart" in san_cmd
-
-
-def test_ffmpeg_strategy_graceful_stop_via_stdin(tmp_path):
-    out_file = tmp_path / "test.mp4"
-    rec = FakeRecorder()
-    strategy = FFmpegStrategy(rec)
-    stop_event = threading.Event()
-
-    fake_stdin = MagicMock()
-
-    class HangingProc:
-        def __init__(self, cmd, **kwargs):
-            self.stdin = fake_stdin
-            self.returncode = 0
-            self._polls = 0
-            out_file.write_bytes(b"DATA" * 2048)
-
-        def poll(self):
-            self._polls += 1
-            if self._polls == 2:
-                stop_event.set()
-            if self._polls > 2:
-                return 0
-            return None
-
-        def wait(self, timeout=None):
-            return 0
-
-        def communicate(self, *args, **kwargs):
-            return b"", b""
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            pass
-
-    with patch("subprocess.Popen", side_effect=HangingProc):
-        success, path, total_bytes = strategy.record(
-            user="streamer1",
-            room_id="123",
-            live_urls=["https://cdn/live.m3u8"],
-            final_output=str(out_file),
-            stop_event=stop_event,
-        )
-
-    assert success is True
-    assert fake_stdin.write.called
-    assert fake_stdin.write.call_args[0][0] == b"q\n"
 
 
 def test_ytdlp_strategy_command_execution(tmp_path):

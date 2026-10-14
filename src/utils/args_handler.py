@@ -151,12 +151,11 @@ def parse_args():
         "--recording-strategy",
         dest="recording_strategy",
         default="requests",
-        choices=["requests", "flv", "ffmpeg", "yt-dlp"],
+        choices=["requests", "flv", "yt-dlp"],
         help=(
-            "Recording strategy: (requests, flv, ffmpeg, yt-dlp) [Default: requests]\n"
-            "[requests/flv] => Python chunked HTTP downloading (Strategy 2, legacy default).\n"
-            "[ffmpeg]       => Direct stream recording via FFmpeg (Strategy 1, fastest, no part splitting).\n"
-            "[yt-dlp]       => Live stream capture via yt-dlp (Strategy 3)."
+            "Recording strategy: (requests, flv, yt-dlp) [Default: requests]\n"
+            "[requests/flv] => Python chunked HTTP downloading (default).\n"
+            "[yt-dlp]       => Live stream capture via yt-dlp (recommended)."
         ),
         action="store",
     )
@@ -177,6 +176,8 @@ def parse_args():
         config_defaults["update_check"] = not bool(
             config_defaults.pop("no_update_check")
         )
+    if config_defaults.get("recording_strategy", "").lower() == "ffmpeg":
+        config_defaults["recording_strategy"] = "requests"
 
     # Apply only non-empty values as defaults
     valid_defaults = {
@@ -218,9 +219,11 @@ def validate_and_parse_args():
         args.recording_strategy = "requests"
     if args.recording_strategy.lower() == "flv":
         args.recording_strategy = "requests"
-    if args.recording_strategy not in ["requests", "ffmpeg", "yt-dlp"]:
+    if args.recording_strategy.lower() == "ffmpeg":
+        args.recording_strategy = "requests"
+    if args.recording_strategy not in ["requests", "yt-dlp"]:
         raise ArgsParseError(
-            "Incorrect recording_strategy value. Choose between 'requests' (or 'flv'), 'ffmpeg' or 'yt-dlp'."
+            "Incorrect recording_strategy value. Choose between 'requests' (or 'flv') or 'yt-dlp'."
         )
 
     raw_user_input = args.user or getattr(args, "users", None)

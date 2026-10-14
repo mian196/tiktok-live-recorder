@@ -251,6 +251,7 @@ class TikTokRecorder:
 
             self.check_country_blacklisted()
 
+            logger.info(f"STRATEGY: {self.recording_strategy}")
             logger.info(f"USERNAME: {self.user}" + ("\n" if not self.room_id else ""))
             if self.room_id:
                 logger.info(

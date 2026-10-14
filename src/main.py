@@ -105,6 +105,11 @@ def main():
         # validate and parse command line arguments
         args, mode = validate_and_parse_args()
 
+        strat = getattr(args, "recording_strategy", "requests").lower()
+        logger.info(
+            f"Active recording strategy: [{strat}] (available: requests, yt-dlp)\n"
+        )
+
         # check ffmpeg binary (supports custom path via -ffmpeg-path)
         check_ffmpeg(args.ffmpeg_path or "ffmpeg")
 
