@@ -181,6 +181,12 @@ def test_ytdlp_strategy_command_execution(tmp_path):
         def terminate(self):
             pass
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
     with patch("subprocess.Popen", side_effect=FakeYtProc):
         success, path, total_bytes = strategy.record(
             user="creator",
@@ -191,7 +197,7 @@ def test_ytdlp_strategy_command_execution(tmp_path):
 
     assert success is True
     assert total_bytes == 10000
-    assert len(captured_cmds) == 1
+    assert len(captured_cmds) == 2
     cmd = captured_cmds[0]
     assert cmd[0] == "custom-yt-dlp"
     assert "--no-part" in cmd
@@ -199,3 +205,9 @@ def test_ytdlp_strategy_command_execution(tmp_path):
     assert "http://proxy:8080" in cmd
     assert str(out_file) in cmd
     assert "https://cdn/live.m3u8" in cmd
+
+    # Verify post-download sanitization
+    san_cmd = captured_cmds[1]
+    assert san_cmd[0] == "ffmpeg"
+    assert "-movflags" in san_cmd
+    assert "+faststart" in san_cmd

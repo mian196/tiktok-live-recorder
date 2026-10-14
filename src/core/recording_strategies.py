@@ -301,10 +301,13 @@ class YtDlpStrategy(BaseRecordingStrategy):
         # Ensure output directory exists
         Path(final_output).parent.mkdir(parents=True, exist_ok=True)
 
-        # Candidate targets: primary stream candidate URL, fallback to live user URL
+        # Candidate targets: prioritize HLS (.m3u8) streams, then other formats, fallback to live user URL
         target_urls = []
         if live_urls:
-            target_urls.extend(live_urls)
+            hls_urls = [u for u in live_urls if ".m3u8" in u or "hls" in u]
+            other_urls = [u for u in live_urls if u not in hls_urls]
+            target_urls.extend(hls_urls)
+            target_urls.extend(other_urls)
         target_urls.append(f"https://www.tiktok.com/@{user}/live")
 
         for index, target_url in enumerate(target_urls, start=1):
@@ -438,6 +441,13 @@ class YtDlpStrategy(BaseRecordingStrategy):
                     marker_file.unlink(missing_ok=True)
                 except Exception:
                     pass
+                if (
+                    Path(final_output).exists()
+                    and Path(final_output).stat().st_size >= min_stream_bytes
+                ):
+                    VideoManagement.sanitize_mp4_timestamps(
+                        final_output, ffmpeg_path=self.recorder.ffmpeg_path
+                    )
                 raise
 
             # Capture remaining output/errors if process finished
@@ -461,6 +471,12 @@ class YtDlpStrategy(BaseRecordingStrategy):
             if total_bytes >= min_stream_bytes:
                 if status_bar:
                     status_bar.finish()
+                # Run quick timestamp sanitization on final MP4 to ensure valid duration & seekability
+                VideoManagement.sanitize_mp4_timestamps(
+                    final_output, ffmpeg_path=self.recorder.ffmpeg_path
+                )
+                if Path(final_output).exists():
+                    total_bytes = Path(final_output).stat().st_size
                 size_mb = total_bytes / (1024 * 1024)
                 logger.info(
                     f"[yt-dlp Strategy] Recording finished for @{user} ({size_mb:.1f} MB saved)."
