@@ -1,7 +1,8 @@
+import collections
 import subprocess
 import time
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 
 from utils.logger_manager import logger
 from utils.status_bar import RecordingStatusBar
@@ -86,6 +87,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 yt_dlp_bin,
                 "--no-part",
                 "--no-warnings",
+                "--no-progress",
                 "--socket-timeout",
                 "15",
                 "--retries",
@@ -118,7 +120,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
             try:
                 proc = subprocess.Popen(
                     cmd,
-                    stdout=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                 )
             except Exception as e:
@@ -129,8 +131,35 @@ class YtDlpStrategy(BaseRecordingStrategy):
                     pass
                 continue
 
+            # Continuously drain stderr in background daemon thread to prevent OS pipe buffer deadlock
+            stderr_buffer = collections.deque(maxlen=30)
+            if getattr(proc, "stderr", None):
+
+                def _drain_stderr(pipe):
+                    try:
+                        for line in iter(pipe.readline, b""):
+                            decoded = line.decode("utf-8", errors="replace").strip()
+                            if decoded:
+                                stderr_buffer.append(decoded)
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            pipe.close()
+                        except Exception:
+                            pass
+
+                stderr_drain_thread = Thread(
+                    target=_drain_stderr, args=(proc.stderr,), daemon=True
+                )
+                stderr_drain_thread.start()
+
             start_time = time.time()
             last_room_check = start_time
+            last_bytes_seen = 0
+            last_growth_time = start_time
+            stall_timeout = 45.0  # seconds with zero byte growth before timeout
+
             if status_bar:
                 status_bar.start()
 
@@ -145,9 +174,11 @@ class YtDlpStrategy(BaseRecordingStrategy):
                             proc.kill()
                         break
 
+                    now = time.time()
+
                     # Check room status every 5 seconds to prevent hanging on stalled streams
-                    if time.time() - last_room_check >= 5.0:
-                        last_room_check = time.time()
+                    if now - last_room_check >= 5.0:
+                        last_room_check = now
                         is_alive, is_confirmed = self.recorder._verify_room_status(
                             room_id
                         )
@@ -164,7 +195,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
                             break
 
                     # Monitor duration
-                    elapsed = time.time() - start_time
+                    elapsed = now - start_time
                     if self.recorder.duration and elapsed >= self.recorder.duration:
                         proc.terminate()
                         try:
@@ -173,10 +204,29 @@ class YtDlpStrategy(BaseRecordingStrategy):
                             proc.kill()
                         break
 
+                    # Monitor recorded bytes and update status bar
                     if Path(final_output).exists():
                         total_bytes = Path(final_output).stat().st_size
+                        if total_bytes > last_bytes_seen:
+                            last_bytes_seen = total_bytes
+                            last_growth_time = now
                         if status_bar:
                             status_bar.update(total_bytes)
+
+                    # Stall detection: if stream has run for 20s grace period and no data received for stall_timeout
+                    if (now - start_time >= 20.0) and (
+                        now - last_growth_time >= stall_timeout
+                    ):
+                        logger.warning(
+                            f"[yt-dlp Strategy] Stream for @{user} stalled (no data for {int(now - last_growth_time)}s). "
+                            "Terminating process to retry or try next candidate stream..."
+                        )
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                        break
 
                     time.sleep(0.5)
 
@@ -203,14 +253,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
                 raise
 
             # Capture remaining output/errors if process finished
-            stderr_msg = ""
-            if getattr(proc, "stderr", None):
-                try:
-                    stderr_msg = (
-                        proc.stderr.read().decode("utf-8", errors="replace").strip()
-                    )
-                except Exception:
-                    pass
+            stderr_msg = "\n".join(stderr_buffer).strip()
 
             if Path(final_output).exists():
                 total_bytes = Path(final_output).stat().st_size
