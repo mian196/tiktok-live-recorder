@@ -216,6 +216,13 @@ class VideoManagement:
             if not video_streams:
                 return False
 
+            pix_fmt = video_streams[0].get("pix_fmt")
+            if not pix_fmt or str(pix_fmt).lower() in ("none", "unknown"):
+                logger.warning(
+                    f"Video track in {file_path} has invalid/unknown pixel format ({pix_fmt})."
+                )
+                return False
+
             if min_expected_duration and min_expected_duration > 0:
                 fmt = probe.get("format", {})
                 start_time = float(fmt.get("start_time", 0) or 0)

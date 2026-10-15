@@ -241,3 +241,28 @@ def test_remove_or_trash_file_fallback_deletes_file(tmp_path):
     success = VideoManagement.remove_or_trash_file(str(seg), move_to_recycle_bin=False)
     assert success is True
     assert not seg.exists()
+
+
+def test_validate_video_integrity_rejects_unknown_pix_fmt(tmp_path):
+    test_mp4 = tmp_path / "corrupted_pix_fmt.mp4"
+    test_mp4.write_bytes(b"X" * 2048)
+
+    # When video stream has pix_fmt='unknown' or 'none', integrity check should fail
+    mock_probe = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "pix_fmt": "unknown",
+                "duration": 50.0,
+            }
+        ],
+        "format": {"duration": 50.0},
+    }
+
+    with patch("ffmpeg.probe", return_value=mock_probe):
+        assert VideoManagement.validate_video_integrity(str(test_mp4)) is False
+
+    # When video stream has valid pix_fmt='yuv420p', integrity check should pass
+    mock_probe["streams"][0]["pix_fmt"] = "yuv420p"
+    with patch("ffmpeg.probe", return_value=mock_probe):
+        assert VideoManagement.validate_video_integrity(str(test_mp4)) is True
