@@ -185,7 +185,7 @@ def test_invalid_url(monkeypatch):
         validate_and_parse_args()
 
 
-def test_automatic_interval_less_than_one(monkeypatch):
+def test_automatic_interval_zero_or_negative(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
@@ -201,8 +201,64 @@ def test_automatic_interval_less_than_one(monkeypatch):
     )
     with pytest.raises(
         ArgsParseError,
-        match="Incorrect automatic_interval value. Must be one minute or more.",
+        match="Incorrect automatic_interval value. Must be greater than 0.",
     ):
+        validate_and_parse_args()
+
+
+def test_automatic_interval_fractional(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "automatic",
+            "-user",
+            "test",
+            "-automatic_interval",
+            "0.5",
+        ],
+    )
+    args, mode = validate_and_parse_args()
+    assert args.automatic_interval == 0.5
+    assert mode == Mode.AUTOMATIC
+
+
+def test_automatic_interval_seconds_suffix(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "automatic",
+            "-user",
+            "test",
+            "-automatic_interval",
+            "30s",
+        ],
+    )
+    args, mode = validate_and_parse_args()
+    assert args.automatic_interval == 0.5
+    assert mode == Mode.AUTOMATIC
+
+
+def test_automatic_interval_invalid_cli_string(monkeypatch):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tiktok-live-recorder",
+            "-mode",
+            "automatic",
+            "-user",
+            "test",
+            "-automatic_interval",
+            "invalid",
+        ],
+    )
+    with pytest.raises(SystemExit):
         validate_and_parse_args()
 
 

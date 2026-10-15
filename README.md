@@ -116,7 +116,7 @@ uv run python src/main.py [options]
 | `-url <URL>` | TikTok live URL to record from. |
 | `-room_id <ROOM_ID>` | Room ID to record from. |
 | `-mode <MODE>` | Recording mode: `manual`, `automatic`, `followers`. |
-| `-automatic_interval <MIN>` | Polling interval in minutes (automatic mode only). |
+| `-automatic_interval <INTERVAL>` | Polling interval (e.g. `30s` for seconds, `1m` for minutes). Automatic mode only. |
 | `-output <DIRECTORY>` | Directory where recordings will be saved. |
 | `-duration <SECONDS>` | Stop recording after this many seconds. |
 | `-proxy <URL>` | HTTP proxy to bypass regional restrictions. |

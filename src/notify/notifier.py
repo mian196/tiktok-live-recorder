@@ -79,9 +79,17 @@ class Notifier:
         elif event == "app_started":
             mode = kwargs.get("mode", "manual")
             interval = kwargs.get("interval", 5)
+            if isinstance(interval, (int, float)):
+                if interval < 1:
+                    interval_str = f"{int(round(interval * 60))}s"
+                else:
+                    mins = int(interval) if int(interval) == interval else interval
+                    interval_str = f"{mins} min"
+            else:
+                interval_str = f"{interval}"
             return (
                 "🚀 TikTok Live Recorder Started",
-                f"Application started.\n**Mode:** `{mode}`\n**Interval:** {interval} min",
+                f"Application started.\n**Mode:** `{mode}`\n**Interval:** {interval_str}",
                 0x3498DB,  # Blue
             )
         elif event == "app_error":

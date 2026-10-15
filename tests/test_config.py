@@ -2,6 +2,8 @@ import json
 import sys
 from unittest.mock import patch
 
+import pytest
+
 from utils.args_handler import validate_and_parse_args
 from utils.enums import Mode
 
@@ -56,3 +58,38 @@ def test_cli_args_override_config_file(tmp_path, monkeypatch):
         assert args.user == "cli_user"
         assert mode == Mode.MANUAL
         assert args.automatic_interval == 20
+
+
+def test_config_automatic_interval_fractional_and_seconds(tmp_path, monkeypatch):
+    # Test float 0.5
+    cfg_file = tmp_path / "config.json"
+    cfg_file.write_text(
+        json.dumps({"user": "user1", "mode": "automatic", "automatic_interval": 0.5}),
+        encoding="utf-8",
+    )
+    with patch("utils.utils._get_config_path", return_value=str(cfg_file)):
+        monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder"])
+        args, mode = validate_and_parse_args()
+        assert args.automatic_interval == 0.5
+
+    # Test string "30s"
+    cfg_file.write_text(
+        json.dumps({"user": "user1", "mode": "automatic", "automatic_interval": "30s"}),
+        encoding="utf-8",
+    )
+    with patch("utils.utils._get_config_path", return_value=str(cfg_file)):
+        monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder"])
+        args, mode = validate_and_parse_args()
+        assert args.automatic_interval == 0.5
+
+    # Test invalid string in config
+    cfg_file.write_text(
+        json.dumps(
+            {"user": "user1", "mode": "automatic", "automatic_interval": "invalid"}
+        ),
+        encoding="utf-8",
+    )
+    with patch("utils.utils._get_config_path", return_value=str(cfg_file)):
+        monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder"])
+        with pytest.raises(SystemExit):
+            validate_and_parse_args()

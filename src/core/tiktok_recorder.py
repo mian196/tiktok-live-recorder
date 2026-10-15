@@ -74,6 +74,17 @@ class _ConversionLock:
 _conversion_lock = _ConversionLock()
 
 
+def format_interval(minutes: float | int) -> str:
+    """Format minutes interval into a human-friendly string (e.g. '30 seconds', '1 minute', '5 minutes')."""
+    seconds = int(round(minutes * 60))
+    if seconds % 60 == 0:
+        mins = int(round(minutes))
+        return f"{mins} minute{'s' if mins != 1 else ''}"
+    if seconds < 60:
+        return f"{seconds} second{'s' if seconds != 1 else ''}"
+    return f"{minutes:g} minutes ({seconds}s)"
+
+
 class TikTokRecorder:
     def __init__(self, config: RecorderConfig):
         self.tiktok = TikTokAPI(proxy=config.proxy, cookies=config.cookies)
@@ -353,14 +364,14 @@ class TikTokRecorder:
                     self.manual_mode()
                 else:
                     logger.info(
-                        f"@{self.user} is not live. Waiting {self.automatic_interval} minute(s) before recheck...\n"
+                        f"@{self.user} is not live. Waiting {format_interval(self.automatic_interval)} before recheck...\n"
                     )
                     time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
                 logger.info(
-                    f"Waiting {self.automatic_interval} minutes before recheck\n"
+                    f"Waiting {format_interval(self.automatic_interval)} before recheck\n"
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
@@ -466,7 +477,7 @@ class TikTokRecorder:
                     1 for t in active_recordings.values() if t.is_alive()
                 )
                 logger.info(
-                    f"All users checked ({active_count} actively recording). Waiting {self.automatic_interval} minutes...\n"
+                    f"All users checked ({active_count} actively recording). Waiting {format_interval(self.automatic_interval)}...\n"
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
         except KeyboardInterrupt:
@@ -526,14 +537,14 @@ class TikTokRecorder:
 
                 print()
                 logger.info(
-                    f"Waiting {self.automatic_interval} minutes for the next check..."
+                    f"Waiting {format_interval(self.automatic_interval)} for the next check..."
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (UserLiveError, LiveNotFound) as ex:
                 logger.info(ex)
                 logger.info(
-                    f"Waiting {self.automatic_interval} minutes before recheck\n"
+                    f"Waiting {format_interval(self.automatic_interval)} before recheck\n"
                 )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 

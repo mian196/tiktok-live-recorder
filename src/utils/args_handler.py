@@ -6,6 +6,44 @@ from utils.enums import Mode, Regex
 from utils.user_identity import parse_tracked_users
 
 
+def parse_interval(val) -> float:
+    """
+    Parses an interval into minutes as a float.
+    Supports units such as '30s' (seconds), '1m' (minutes), '1h' (hours),
+    or plain numbers (treated as minutes for backward compatibility).
+    """
+    if val is None:
+        return 5.0
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    val_str = str(val).strip().lower()
+    if val_str.endswith("hours"):
+        return float(val_str[:-5].strip()) * 60.0
+    if val_str.endswith("hour"):
+        return float(val_str[:-4].strip()) * 60.0
+    if val_str.endswith("h"):
+        return float(val_str[:-1].strip()) * 60.0
+    if val_str.endswith("seconds"):
+        return float(val_str[:-7].strip()) / 60.0
+    if val_str.endswith("second"):
+        return float(val_str[:-6].strip()) / 60.0
+    if val_str.endswith("sec"):
+        return float(val_str[:-3].strip()) / 60.0
+    if val_str.endswith("s"):
+        return float(val_str[:-1].strip()) / 60.0
+    if val_str.endswith("minutes"):
+        return float(val_str[:-7].strip())
+    if val_str.endswith("minute"):
+        return float(val_str[:-6].strip())
+    if val_str.endswith("min"):
+        return float(val_str[:-3].strip())
+    if val_str.endswith("m"):
+        return float(val_str[:-1].strip())
+
+    return float(val_str)
+
+
 def parse_args():
     """
     Parse command line arguments.
@@ -52,9 +90,9 @@ def parse_args():
     parser.add_argument(
         "-automatic_interval",
         dest="automatic_interval",
-        help="Sets the interval in minutes to check if the user is live in automatic mode. [Default: 5]",
-        type=int,
-        default=5,
+        help="Sets the polling interval in automatic mode (e.g. '30s' for 30 seconds, '1m' for 1 minute). [Default: 5]",
+        type=parse_interval,
+        default=5.0,
         action="store",
     )
 
@@ -263,9 +301,16 @@ def validate_and_parse_args():
     ):
         raise ArgsParseError("Please provide only one among username, room ID, or URL.")
 
-    if args.automatic_interval < 1:
+    try:
+        args.automatic_interval = parse_interval(args.automatic_interval)
+    except (ValueError, TypeError):
         raise ArgsParseError(
-            "Incorrect automatic_interval value. Must be one minute or more."
+            "Incorrect automatic_interval value. Specify time units, e.g. '30s' for seconds or '1m' for minutes."
+        )
+
+    if args.automatic_interval <= 0:
+        raise ArgsParseError(
+            "Incorrect automatic_interval value. Must be greater than 0."
         )
 
     if args.mode == "manual":

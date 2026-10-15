@@ -12,7 +12,7 @@ class RecorderConfig:
     users: list[str] | None = None
     tracked_users: list[TrackedUser] | None = None
     room_id: str | None = None
-    automatic_interval: int = 5
+    automatic_interval: float | int = 5.0
     cookies: dict | None = None
     proxy: str | None = None
     output: str | None = None
