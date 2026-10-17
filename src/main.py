@@ -64,6 +64,9 @@ def _build_config(args, mode, cookies, user=None):
         disk_space_alert_gb=getattr(args, "disk_space_alert_gb", 5),
         recording_strategy=getattr(args, "recording_strategy", "requests"),
         yt_dlp_path=getattr(args, "yt_dlp_path", None),
+        purge_after_upload=getattr(args, "purge_after_upload", False),
+        split_video=getattr(args, "split_video", True),
+        split_size_mb=getattr(args, "split_size_mb", 1950),
     )
 
 

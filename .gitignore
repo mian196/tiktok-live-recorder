@@ -160,3 +160,6 @@ output/
 *.status.json
 output/logs/.status/
 output/logs/status/
+
+# Deploy directory for custom VM scripts & workers
+deploy/

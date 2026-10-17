@@ -21,7 +21,12 @@
   "move_to_recycle_bin": true,
   "recording_strategy": "requests",
   "yt_dlp_path": "yt-dlp",
+  "purge_after_upload": false,
+  "split_video": true,
+  "split_size_mb": 1950,
   "no_update_check": false,
+
+
   "notifications": {
     "enabled": false,
     "discord_webhook_url": "",

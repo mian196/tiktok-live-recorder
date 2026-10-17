@@ -26,3 +26,6 @@ class RecorderConfig:
     disk_space_alert_gb: int = 5
     recording_strategy: str = "requests"
     yt_dlp_path: str | None = None
+    purge_after_upload: bool = False
+    split_video: bool = True
+    split_size_mb: int = 1950

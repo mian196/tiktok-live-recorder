@@ -207,6 +207,33 @@ def parse_args():
         action="store",
     )
 
+    parser.add_argument(
+        "-purge-after-upload",
+        "--purge-after-upload",
+        dest="purge_after_upload",
+        action="store_true",
+        default=False,
+        help="Automatically delete converted MP4 and split files after verified Telegram upload.",
+    )
+
+    parser.add_argument(
+        "-no-split",
+        "--no-split",
+        dest="split_video",
+        action="store_false",
+        default=True,
+        help="Disable splitting videos exceeding size limits.",
+    )
+
+    parser.add_argument(
+        "-split-size-mb",
+        "--split-size-mb",
+        dest="split_size_mb",
+        type=int,
+        default=1950,
+        help="Maximum part size in MB before splitting video [Default: 1950].",
+    )
+
     from utils.utils import read_config
 
     config_defaults = read_config()

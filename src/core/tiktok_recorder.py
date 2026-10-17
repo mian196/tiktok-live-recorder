@@ -110,8 +110,10 @@ class TikTokRecorder:
         self.config = config
         self.recording_strategy = getattr(config, "recording_strategy", "requests")
         self.yt_dlp_path = getattr(config, "yt_dlp_path", None)
+        self.purge_after_upload = getattr(config, "purge_after_upload", False)
 
         # Self-healing tracked users
+
         self.tracked_users: list[TrackedUser] = config.tracked_users or []
         if not self.tracked_users:
             if config.users:
@@ -639,7 +641,12 @@ class TikTokRecorder:
                 try:
                     from upload.telegram import Telegram
 
-                    uploaded = Telegram().upload(output_file)
+                    uploaded = Telegram().upload(
+                        output_file,
+                        purge_after=self.purge_after_upload,
+                        ffmpeg_path=self.ffmpeg_path,
+                    )
+
                     if uploaded:
                         self.notify.notify(
                             "upload_finished",

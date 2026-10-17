@@ -253,6 +253,93 @@ class VideoManagement:
             return False
 
     @staticmethod
+    def fast_split_video(
+        file_path: str,
+        max_bytes: int = 1950 * 1024 * 1024,
+        ffmpeg_path: str = None,
+    ) -> list[str]:
+        """
+        Splits a video file into parts under max_bytes using fast ffmpeg stream copy (-c copy)
+        without re-encoding. Returns list of resulting segment file paths.
+        """
+        import math
+
+        path = Path(file_path)
+        if not path.exists():
+            return []
+
+        file_size = path.stat().st_size
+        if file_size <= max_bytes:
+            return [str(path)]
+
+        cmd_bin = ffmpeg_path or "ffmpeg"
+        ffprobe_bin = "ffprobe"
+        if ffmpeg_path:
+            cand = Path(ffmpeg_path).with_name(
+                "ffprobe.exe" if os.name == "nt" else "ffprobe"
+            )
+            if cand.exists():
+                ffprobe_bin = str(cand)
+
+        total_duration = VideoManagement.get_segment_duration(
+            str(path), ffprobe_cmd=ffprobe_bin
+        )
+        if total_duration <= 0:
+            logger.warning(
+                f"Unable to determine duration for {path.name}. Uploading as single file."
+            )
+            return [str(path)]
+
+        num_parts = math.ceil(file_size / max_bytes)
+        part_duration = total_duration / num_parts
+
+        logger.info(
+            f"Splitting {path.name} ({round(file_size / (1024 * 1024))} MB) into "
+            f"{num_parts} parts of ~{part_duration:.1f}s each without re-encoding..."
+        )
+
+        parts = []
+        base_stem = path.stem
+        parent_dir = path.parent
+
+        import subprocess
+
+        for idx in range(num_parts):
+            start_time = idx * part_duration
+            part_name = parent_dir / f"{base_stem}_part{idx + 1:02d}.mp4"
+
+            cmd = [
+                cmd_bin,
+                "-y",
+                "-ss",
+                f"{start_time:.3f}",
+                "-i",
+                str(path.resolve()),
+                "-t",
+                f"{part_duration:.3f}",
+                "-c",
+                "copy",
+                "-avoid_negative_ts",
+                "make_zero",
+                "-movflags",
+                "+faststart",
+                str(part_name.resolve()),
+            ]
+
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                logger.error(f"ffmpeg split failed for {part_name.name}: {res.stderr}")
+                return [str(path)]
+
+            if part_name.exists() and part_name.stat().st_size > 0:
+                parts.append(str(part_name))
+            else:
+                logger.error(f"Split part not found: {part_name.name}")
+                return [str(path)]
+
+        return parts
+
+    @staticmethod
     def convert_segments_to_mp4(
         segment_files: list[str],
         output_file: str,
