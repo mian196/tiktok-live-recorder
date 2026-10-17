@@ -1,5 +1,7 @@
 {
   "api_id": "YOUR_TELEGRAM_API_ID",
   "api_hash": "YOUR_TELEGRAM_API_HASH",
-  "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+  "chat_id": "YOUR_TELEGRAM_CHAT_ID",
+  "topic_id": null
 }
+

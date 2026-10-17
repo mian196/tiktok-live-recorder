@@ -63,3 +63,68 @@ def test_notifier_error_never_raises():
         )
         # Must not raise an exception
         notifier.notify("recording_failed", user="user1", error="Some error")
+
+
+def test_notifier_upload_events():
+    with patch("requests.post") as mock_post:
+        notifier = Notifier(
+            {
+                "enabled": True,
+                "discord_webhook_url": "http://fake.discord/webhook",
+            }
+        )
+
+        notifier.notify(
+            "upload_started",
+            user="streamer1",
+            file="streamer1_2026.mp4",
+            size_mb=120,
+        )
+        assert mock_post.called
+        assert "Upload Started" in mock_post.call_args[1]["json"]["embeds"][0]["title"]
+        assert "120 MB" in mock_post.call_args[1]["json"]["embeds"][0]["description"]
+
+        notifier.notify(
+            "upload_finished",
+            user="streamer1",
+            file="streamer1_2026.mp4",
+            size_mb=120,
+        )
+        assert "Upload Finished" in mock_post.call_args[1]["json"]["embeds"][0]["title"]
+
+        notifier.notify(
+            "upload_failed",
+            user="streamer1",
+            file="streamer1_2026.mp4",
+            error="File size too large",
+        )
+        assert "Upload Failed" in mock_post.call_args[1]["json"]["embeds"][0]["title"]
+
+
+def test_telegram_parse_chat_id():
+    from upload.telegram import parse_chat_id
+
+    assert parse_chat_id("me") == "me"
+    assert parse_chat_id("") == "me"
+    assert parse_chat_id(None) == "me"
+    assert parse_chat_id("-1001234567890") == -1001234567890
+    assert parse_chat_id(-1001234567890) == -1001234567890
+    assert parse_chat_id("123456789") == 123456789
+    assert parse_chat_id("@my_channel") == "@my_channel"
+
+
+def test_telegram_topic_id_init(monkeypatch):
+    from upload.telegram import Telegram
+
+    monkeypatch.setattr(
+        "upload.telegram.read_telegram_config",
+        lambda: {
+            "api_id": 123,
+            "api_hash": "abc",
+            "chat_id": "-100123",
+            "topic_id": "42",
+        },
+    )
+    t = Telegram()
+    assert t.chat_id == -100123
+    assert t.topic_id == 42

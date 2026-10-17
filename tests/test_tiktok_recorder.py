@@ -318,3 +318,49 @@ def test_automatic_mode_multi_spawns_simultaneous_threads(monkeypatch):
 
     assert "user_a" in recorded_users
     assert "user_b" in recorded_users
+
+
+def test_start_recording_dispatches_upload_notifications(tmp_path, monkeypatch):
+    from unittest.mock import MagicMock
+    from core.tiktok_recorder import TikTokRecorder
+    from utils.recorder_config import RecorderConfig
+    from utils.enums import Mode
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.MANUAL,
+            user="streamer_upload",
+            output=str(tmp_path),
+            use_telegram=True,
+        )
+    )
+
+    mock_notify = MagicMock()
+    recorder.notify = mock_notify
+
+    class FakeAPI:
+        def get_live_url_candidates(self, room_id, user=None):
+            return ["http://cdn.fake/live.flv"]
+
+    recorder.tiktok = FakeAPI()
+
+    class FakeStrategy:
+        def record(self, **kwargs):
+            return True, str(tmp_path / "video.mp4"), 1024 * 1024 * 50
+
+    monkeypatch.setattr(
+        "core.recording_strategies.get_recording_strategy",
+        lambda *a, **kw: FakeStrategy(),
+    )
+
+    mock_telegram = MagicMock()
+    mock_telegram.return_value.upload.return_value = True
+    monkeypatch.setattr("upload.telegram.Telegram", mock_telegram)
+
+    recorder.start_recording("streamer_upload", "12345")
+
+    # Verify notifications were fired: recording_finished, upload_started, upload_finished
+    events_called = [call.args[0] for call in mock_notify.notify.call_args_list]
+    assert "recording_finished" in events_called
+    assert "upload_started" in events_called
+    assert "upload_finished" in events_called

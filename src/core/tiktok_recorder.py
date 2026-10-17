@@ -628,12 +628,43 @@ class TikTokRecorder:
             )
 
             if self.use_telegram:
+                file_size_mb = round(total_bytes / (1024 * 1024))
+                self.notify.notify(
+                    "upload_started",
+                    user=user,
+                    file=output_file,
+                    size_mb=file_size_mb,
+                    destination="Telegram",
+                )
                 try:
                     from upload.telegram import Telegram
 
-                    Telegram().upload(output_file)
+                    uploaded = Telegram().upload(output_file)
+                    if uploaded:
+                        self.notify.notify(
+                            "upload_finished",
+                            user=user,
+                            file=output_file,
+                            size_mb=file_size_mb,
+                            destination="Telegram",
+                        )
+                    else:
+                        self.notify.notify(
+                            "upload_failed",
+                            user=user,
+                            file=output_file,
+                            error="Upload did not complete",
+                            destination="Telegram",
+                        )
                 except Exception as e:
                     logger.error(f"Telegram upload failed: {e}")
+                    self.notify.notify(
+                        "upload_failed",
+                        user=user,
+                        file=output_file,
+                        error=str(e),
+                        destination="Telegram",
+                    )
 
     def check_country_blacklisted(self):
         is_blacklisted = self.tiktok.is_country_blacklisted()

@@ -35,7 +35,10 @@
       "user_offline": true,
       "app_started": true,
       "app_error": true,
-      "low_disk_space": true
+      "low_disk_space": true,
+      "upload_started": true,
+      "upload_finished": true,
+      "upload_failed": true
     }
   }
 }

@@ -28,6 +28,9 @@ class Notifier:
                 "app_started": True,
                 "app_error": True,
                 "low_disk_space": True,
+                "upload_started": True,
+                "upload_finished": True,
+                "upload_failed": True,
             },
         )
         self._last_sent: dict[str, float] = {}
@@ -107,6 +110,33 @@ class Notifier:
                 f"Free space: **{free_gb} GB** (threshold: {threshold} GB). Recording paused for **@{user}**.",
                 0xE67E22,  # Orange
             )
+        elif event == "upload_started":
+            file_name = Path(kwargs.get("file", "")).name
+            size_mb = kwargs.get("size_mb", 0)
+            destination = kwargs.get("destination", "Telegram")
+            return (
+                "📤 Upload Started",
+                f"Uploading recording for **@{user}** to {destination}.\n**File:** `{file_name}`\n**Size:** {size_mb} MB",
+                0x3498DB,  # Blue
+            )
+        elif event == "upload_finished":
+            file_name = Path(kwargs.get("file", "")).name
+            size_mb = kwargs.get("size_mb", 0)
+            destination = kwargs.get("destination", "Telegram")
+            return (
+                "☁️ Upload Finished",
+                f"Successfully uploaded recording for **@{user}** to {destination}.\n**File:** `{file_name}`\n**Size:** {size_mb} MB",
+                0x2ECC71,  # Green
+            )
+        elif event == "upload_failed":
+            file_name = Path(kwargs.get("file", "")).name
+            error = kwargs.get("error", "Unknown error")
+            destination = kwargs.get("destination", "Telegram")
+            return (
+                "❌ Upload Failed",
+                f"Failed to upload recording for **@{user}** to {destination}.\n**File:** `{file_name}`\n**Error:** `{error}`",
+                0xE74C3C,  # Red
+            )
         else:
             return ("Notification", str(kwargs), 0x95A5A6)
 
@@ -136,7 +166,7 @@ class Notifier:
                 from upload.telegram import Telegram
 
                 self._telegram = Telegram()
-            # Send plain notification message
+            from upload.telegram import _telegram_lock
             import asyncio
 
             async def _send():
@@ -147,14 +177,28 @@ class Notifier:
                     )
                     await self._telegram.client.disconnect()
                     return
-                await self._telegram.client.send_message(
-                    self._telegram.chat_id,
-                    f"<b>{title}</b>\n{message}",
-                    parse_mode="html",
+                target_entity = await self._telegram._resolve_entity(
+                    self._telegram.chat_id
                 )
+                text = f"**{title}**\n{message}"
+                send_kwargs = {
+                    "entity": target_entity,
+                    "message": text,
+                    "parse_mode": "md",
+                }
+                if getattr(self._telegram, "topic_id", None) is not None:
+                    send_kwargs["reply_to"] = self._telegram.topic_id
+
+                try:
+                    await self._telegram.client.send_message(**send_kwargs)
+                except Exception:
+                    send_kwargs["parse_mode"] = None
+                    send_kwargs["message"] = f"{title}\n{message}"
+                    await self._telegram.client.send_message(**send_kwargs)
                 await self._telegram.client.disconnect()
 
-            asyncio.run(_send())
+            with _telegram_lock:
+                asyncio.run(_send())
         except Exception as e:
             logger.debug(f"Telegram notification failed: {e}")
 
