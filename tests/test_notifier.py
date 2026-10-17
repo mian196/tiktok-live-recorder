@@ -114,8 +114,10 @@ def test_telegram_parse_chat_id():
 
 
 def test_telegram_topic_id_init(monkeypatch):
+    from unittest.mock import MagicMock
     from upload.telegram import Telegram
 
+    monkeypatch.setattr("upload.telegram.TelegramClient", MagicMock())
     monkeypatch.setattr(
         "upload.telegram.read_telegram_config",
         lambda: {
