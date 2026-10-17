@@ -364,6 +364,12 @@ class TikTokRecorder:
                 if self.room_id and self.tiktok.is_room_alive(self.room_id):
                     self.notify.notify("live_detected", user=self.user)
                     self.manual_mode()
+                    if getattr(self, "_last_recording_stopped_by_user", False):
+                        self._last_recording_stopped_by_user = False
+                        logger.info(
+                            f"Recording stopped for @{self.user}. Waiting {format_interval(self.automatic_interval)} before recheck...\n"
+                        )
+                        time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
                 else:
                     logger.info(
                         f"@{self.user} is not live. Waiting {format_interval(self.automatic_interval)} before recheck...\n"
@@ -620,6 +626,9 @@ class TikTokRecorder:
             stop_event=stop_event,
             status_bar=status_bar,
         )
+
+        if stop_event.is_set():
+            self._last_recording_stopped_by_user = True
 
         if success:
             self.notify.notify(

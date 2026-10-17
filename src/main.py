@@ -12,13 +12,21 @@ def record_user(config):
     from core.tiktok_recorder import TikTokRecorder
     from utils.logger_manager import logger
 
+    ctrl_c_count = 0
     while True:
         try:
             TikTokRecorder(config).run()
             break
         except KeyboardInterrupt:
-            logger.info("Quitting TikTok Live Recorder...")
-            break
+            ctrl_c_count += 1
+            if ctrl_c_count >= 2 or config.mode == Mode.MANUAL:
+                logger.info("Quitting TikTok Live Recorder...")
+                break
+            else:
+                logger.info(
+                    f"Ctrl-C detected for @{config.user or 'user'}. Press Ctrl-C again to quit."
+                )
+                time.sleep(1)
         except Exception as e:
             if config.mode == Mode.AUTOMATIC:
                 logger.error(
@@ -78,19 +86,30 @@ def run_recordings(args, mode, cookies):
             p = multiprocessing.Process(target=record_user, args=(config,))
             p.start()
             processes.append(p)
-        try:
-            for p in processes:
-                p.join()
-        except KeyboardInterrupt:
-            print("\n[!] Ctrl-C detected.")
+        ctrl_c_times = []
+        while any(p.is_alive() for p in processes):
             try:
                 for p in processes:
-                    p.join()
-            except KeyboardInterrupt:
-                print("\n[!] Forcefully terminating all processes.")
-                for p in processes:
                     if p.is_alive():
-                        p.terminate()
+                        p.join(timeout=1.0)
+            except KeyboardInterrupt:
+                now = time.time()
+                ctrl_c_times.append(now)
+                if len(ctrl_c_times) >= 2 and (
+                    ctrl_c_times[-1] - ctrl_c_times[-2] <= 10.0
+                ):
+                    print(
+                        "\n[!] Ctrl-C detected again. Forcefully terminating all processes."
+                    )
+                    for p in processes:
+                        if p.is_alive():
+                            p.terminate()
+                    break
+                else:
+                    print(
+                        "\n[!] Ctrl-C detected: stopping active recording(s) and uploading. "
+                        "Press Ctrl-C again within 10s to force quit."
+                    )
     else:
         config = _build_config(args, mode, cookies, user=args.user)
         record_user(config)

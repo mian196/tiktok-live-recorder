@@ -233,7 +233,10 @@ class YtDlpStrategy(BaseRecordingStrategy):
             except KeyboardInterrupt:
                 if status_bar:
                     status_bar.clear()
-                logger.info(f"Recording stopped by user for @{user}.")
+                logger.info(
+                    f"Ctrl-C detected: Stopping recording for @{user} and finalizing video "
+                    "(press Ctrl-C again to exit)..."
+                )
                 proc.terminate()
                 try:
                     proc.wait(timeout=5)
@@ -250,7 +253,13 @@ class YtDlpStrategy(BaseRecordingStrategy):
                     VideoManagement.sanitize_mp4_timestamps(
                         final_output, ffmpeg_path=self.recorder.ffmpeg_path
                     )
-                raise
+                    total_bytes = Path(final_output).stat().st_size
+                    size_mb = total_bytes / (1024 * 1024)
+                    logger.info(
+                        f"[yt-dlp Strategy] Recording finished for @{user} ({size_mb:.1f} MB saved)."
+                    )
+                    return True, final_output, total_bytes
+                return False, final_output, total_bytes
 
             # Capture remaining output/errors if process finished
             stderr_msg = "\n".join(stderr_buffer).strip()
@@ -466,9 +475,12 @@ class RequestsStrategy(BaseRecordingStrategy):
                 except KeyboardInterrupt:
                     if status_bar:
                         status_bar.clear()
-                    logger.info("Recording stopped by user.")
+                    logger.info(
+                        f"Ctrl-C detected: Stopping recording for @{user} and finalizing video "
+                        "(press Ctrl-C again to exit)..."
+                    )
                     stop_event.set()
-                    raise
+                    part_reason = "Recording stopped by user (Ctrl-C)"
                 except Exception as ex:
                     if status_bar:
                         status_bar.clear()

@@ -23,6 +23,7 @@ class FakeRecorder:
         self._proxy = kwargs.get("proxy", None)
         self.notify = MagicMock()
         self.tiktok = MagicMock()
+        self._verify_room_status = MagicMock(return_value=(True, True))
 
 
 def test_get_recording_strategy_factory():
@@ -89,3 +90,75 @@ def test_ytdlp_strategy_command_execution(tmp_path):
     assert san_cmd[0] == "ffmpeg"
     assert "-movflags" in san_cmd
     assert "+faststart" in san_cmd
+
+
+def test_requests_strategy_ctrl_c_graceful_stop_and_convert(tmp_path):
+    out_file = tmp_path / "test_ctrl_c.mp4"
+    rec = FakeRecorder()
+    strategy = RequestsStrategy(rec)
+
+    chunks = [b"FLV_HEADER", b"DATA" * 1500]
+
+    def mock_stream(url):
+        for c in chunks:
+            yield c
+        raise KeyboardInterrupt("Simulated Ctrl-C")
+
+    rec.tiktok.download_live_stream = mock_stream
+    rec.tiktok.verify_room_status = MagicMock(return_value=(True, True))
+
+    with patch(
+        "utils.video_management.VideoManagement.convert_segments_to_mp4",
+        return_value=True,
+    ) as mock_conv:
+        success, path, total_bytes = strategy.record(
+            user="creator",
+            room_id="888",
+            live_urls=["https://cdn/live.flv"],
+            final_output=str(out_file),
+        )
+
+    assert success is True
+    assert total_bytes == len(b"FLV_HEADER") + len(b"DATA" * 1500)
+    assert mock_conv.called
+
+
+def test_ytdlp_strategy_ctrl_c_graceful_stop(tmp_path):
+    out_file = tmp_path / "test_ytdlp_ctrl_c.mp4"
+    rec = FakeRecorder()
+    strategy = YtDlpStrategy(rec)
+
+    class FakeYtProcInterrupt:
+        def __init__(self, cmd, **kwargs):
+            self.returncode = 0
+            out_file.write_bytes(b"VIDEO" * 1500)
+
+        def poll(self):
+            # Simulate Ctrl-C when poll is checked
+            raise KeyboardInterrupt("Simulated Ctrl-C")
+
+        def wait(self, timeout=None):
+            return 0
+
+        def terminate(self):
+            pass
+
+        def kill(self):
+            pass
+
+    with (
+        patch("subprocess.Popen", side_effect=FakeYtProcInterrupt),
+        patch(
+            "utils.video_management.VideoManagement.sanitize_mp4_timestamps"
+        ) as mock_san,
+    ):
+        success, path, total_bytes = strategy.record(
+            user="creator",
+            room_id="999",
+            live_urls=["https://cdn/live.m3u8"],
+            final_output=str(out_file),
+        )
+
+    assert success is True
+    assert total_bytes == len(b"VIDEO" * 1500)
+    assert mock_san.called
