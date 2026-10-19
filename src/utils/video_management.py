@@ -129,7 +129,12 @@ class VideoManagement:
         """Probe the duration of a video segment in seconds,
         accounting for stream start_time timestamp offsets in live FLV containers."""
         try:
-            probe = ffmpeg.probe(str(file_path), cmd=ffprobe_cmd)
+            probe = ffmpeg.probe(
+                str(file_path),
+                cmd=ffprobe_cmd,
+                probesize="50M",
+                analyzeduration="50M",
+            )
             fmt = probe.get("format", {})
             start_time = float(fmt.get("start_time", 0) or 0)
             duration = float(fmt.get("duration", 0) or 0)
@@ -165,6 +170,10 @@ class VideoManagement:
                 cmd = [
                     ffmpeg_bin,
                     "-y",
+                    "-probesize",
+                    "50M",
+                    "-analyzeduration",
+                    "50M",
                     "-fflags",
                     "+genpts+discardcorrupt",
                     "-i",
@@ -210,7 +219,12 @@ class VideoManagement:
                 if ffprobe_candidate.exists():
                     cmd = str(ffprobe_candidate)
 
-            probe = ffmpeg.probe(str(path), cmd=cmd)
+            probe = ffmpeg.probe(
+                str(path),
+                cmd=cmd,
+                probesize="50M",
+                analyzeduration="50M",
+            )
             streams = probe.get("streams", [])
             video_streams = [s for s in streams if s.get("codec_type") == "video"]
             if not video_streams:
@@ -218,10 +232,50 @@ class VideoManagement:
 
             pix_fmt = video_streams[0].get("pix_fmt")
             if not pix_fmt or str(pix_fmt).lower() in ("none", "unknown"):
-                logger.warning(
-                    f"Video track in {file_path} has invalid/unknown pixel format ({pix_fmt})."
-                )
-                return False
+                # Secondary validation: verify whether a video frame can actually be decoded
+                # in case the video stream starts after an initial audio-only intro
+                verified_decode = False
+                try:
+                    import subprocess
+
+                    ffmpeg_bin = "ffmpeg"
+                    if cmd != "ffprobe":
+                        cand = Path(cmd).with_name(
+                            "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+                        )
+                        if cand.exists():
+                            ffmpeg_bin = str(cand)
+                    check_cmd = [
+                        ffmpeg_bin,
+                        "-v",
+                        "error",
+                        "-probesize",
+                        "50M",
+                        "-analyzeduration",
+                        "50M",
+                        "-i",
+                        str(path.resolve()),
+                        "-map",
+                        "0:v:0",
+                        "-frames:v",
+                        "1",
+                        "-f",
+                        "null",
+                        "-",
+                    ]
+                    check_res = subprocess.run(
+                        check_cmd, capture_output=True, text=True
+                    )
+                    if check_res.returncode == 0:
+                        verified_decode = True
+                except Exception:
+                    pass
+
+                if not verified_decode:
+                    logger.warning(
+                        f"Video track in {file_path} has invalid/unknown pixel format ({pix_fmt})."
+                    )
+                    return False
 
             if min_expected_duration and min_expected_duration > 0:
                 fmt = probe.get("format", {})
@@ -428,9 +482,14 @@ class VideoManagement:
 
             copy_success = False
             try:
-                ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
-                    str(target_path), **output_args
-                ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                ffmpeg.input(
+                    seg_file,
+                    probesize="50M",
+                    analyzeduration="50M",
+                    fflags="+genpts+discardcorrupt",
+                ).output(str(target_path), **output_args).run(
+                    quiet=True, cmd=cmd, capture_stderr=True
+                )
                 if VideoManagement.validate_video_integrity(
                     str(target_path),
                     ffmpeg_path=cmd,
@@ -465,9 +524,14 @@ class VideoManagement:
                     }
                     if bitrate:
                         fallback_args["b:v"] = bitrate
-                    ffmpeg.input(seg_file, fflags="+genpts+discardcorrupt").output(
-                        str(target_path), **fallback_args
-                    ).run(quiet=True, cmd=cmd, capture_stderr=True)
+                    ffmpeg.input(
+                        seg_file,
+                        probesize="50M",
+                        analyzeduration="50M",
+                        fflags="+genpts+discardcorrupt",
+                    ).output(str(target_path), **fallback_args).run(
+                        quiet=True, cmd=cmd, capture_stderr=True
+                    )
                     conversion_succeeded = True
                 except ffmpeg.Error as transcode_err:
                     err_msg = (
@@ -501,6 +565,8 @@ class VideoManagement:
                     try:
                         ffmpeg.input(
                             str(Path(seg).resolve()),
+                            probesize="50M",
+                            analyzeduration="50M",
                             fflags="+genpts+discardcorrupt",
                         ).output(
                             str(ts_file),
@@ -543,6 +609,8 @@ class VideoManagement:
                         str(manifest_file),
                         f="concat",
                         safe=0,
+                        probesize="50M",
+                        analyzeduration="50M",
                         fflags="+genpts+discardcorrupt",
                     ).output(str(target_path), **output_args).run(
                         quiet=True, cmd=cmd, capture_stderr=True
@@ -585,6 +653,8 @@ class VideoManagement:
                             str(manifest_file),
                             f="concat",
                             safe=0,
+                            probesize="50M",
+                            analyzeduration="50M",
                             fflags="+genpts+discardcorrupt",
                         ).output(str(target_path), **fallback_args).run(
                             quiet=True, cmd=cmd, capture_stderr=True

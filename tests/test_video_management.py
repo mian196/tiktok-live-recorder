@@ -266,3 +266,50 @@ def test_validate_video_integrity_rejects_unknown_pix_fmt(tmp_path):
     mock_probe["streams"][0]["pix_fmt"] = "yuv420p"
     with patch("ffmpeg.probe", return_value=mock_probe):
         assert VideoManagement.validate_video_integrity(str(test_mp4)) is True
+
+
+def test_validate_video_integrity_accepts_unknown_pix_fmt_if_frame_decode_succeeds(
+    tmp_path,
+):
+    test_mp4 = tmp_path / "late_video.mp4"
+    test_mp4.write_bytes(b"X" * 2048)
+
+    mock_probe = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "pix_fmt": "unknown",
+                "duration": 50.0,
+            }
+        ],
+        "format": {"duration": 50.0},
+    }
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+
+    with (
+        patch("ffmpeg.probe", return_value=mock_probe),
+        patch("subprocess.run", return_value=mock_proc),
+    ):
+        assert VideoManagement.validate_video_integrity(str(test_mp4)) is True
+
+
+def test_convert_segments_passes_probesize_and_analyzeduration(tmp_path):
+    seg1 = tmp_path / "part1.flv"
+    seg1.write_bytes(b"flv content")
+    out = tmp_path / "out.mp4"
+
+    with patch("ffmpeg.input") as mock_input:
+        mock_output = MagicMock()
+        mock_input.return_value.output.return_value = mock_output
+        mock_output.run.side_effect = lambda **kwargs: out.write_bytes(b"mp4")
+
+        VideoManagement.convert_segments_to_mp4([str(seg1)], str(out), keep_flv=True)
+
+        mock_input.assert_called_with(
+            str(seg1),
+            probesize="50M",
+            analyzeduration="50M",
+            fflags="+genpts+discardcorrupt",
+        )
