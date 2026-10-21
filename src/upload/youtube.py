@@ -25,7 +25,10 @@ except ImportError:
 
 _youtube_lock = threading.RLock()
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube",
+]
 RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 RETRYABLE_EXCEPTIONS = (
     socket.error,
@@ -389,6 +392,14 @@ class YouTube:
                 f"Could not add video {video_id} to playlist [{playlist_target}]: {e}"
             )
             return False
+
+    def add_video_to_playlist(self, video_id: str, playlist_target: str) -> bool:
+        """Public helper to add an existing video ID to a playlist."""
+        service = self._get_authenticated_service()
+        if not service:
+            logger.error("Could not obtain authenticated YouTube service.")
+            return False
+        return self._add_video_to_playlist(service, video_id, playlist_target)
 
     def _format_metadata(
         self, user: str, source_path: Path, nickname: str = "", room_id: str = ""
