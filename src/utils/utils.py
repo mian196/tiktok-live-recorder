@@ -36,6 +36,17 @@ def read_cookies():
         return json.load(f)
 
 
+def read_youtube_config():
+    """
+    Loads the youtube config file and returns it.
+    """
+    config_path = _get_config_path("youtube.json")
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def read_telegram_config():
     """
     Loads the telegram config file and returns it.

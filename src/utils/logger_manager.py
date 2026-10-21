@@ -67,28 +67,33 @@ class LoggerManager:
             self.logger.setLevel(logging.DEBUG)
 
             fmt_datefmt = "%Y-%m-%d %H:%M:%S"
+            from utils.timezone_manager import (
+                get_logging_time_converter,
+                format_configured_time,
+            )
+
+            time_conv = get_logging_time_converter()
 
             # 1) Console INFO handler (stdout)
             info_handler = StatusBarAwareStreamHandler(sys.stdout)
             info_handler.setLevel(logging.INFO)
-            info_handler.setFormatter(
-                logging.Formatter("[*] %(asctime)s - %(message)s", fmt_datefmt)
-            )
+            info_fmt = logging.Formatter("[*] %(asctime)s - %(message)s", fmt_datefmt)
+            info_fmt.converter = time_conv
+            info_handler.setFormatter(info_fmt)
             info_handler.addFilter(MaxLevelFilter(logging.INFO))
             self.logger.addHandler(info_handler)
 
             # 2) Console WARNING & ERROR handler (stderr)
             error_handler = StatusBarAwareStreamHandler(sys.stderr)
             error_handler.setLevel(logging.WARNING)
-            error_handler.setFormatter(
-                logging.Formatter("[!] %(asctime)s - %(message)s", fmt_datefmt)
-            )
+            err_fmt = logging.Formatter("[!] %(asctime)s - %(message)s", fmt_datefmt)
+            err_fmt.converter = time_conv
+            error_handler.setFormatter(err_fmt)
             self.logger.addHandler(error_handler)
 
             # 3) File handler — DEBUG level, includes full stack traces
             #    Creates a dedicated log file per run session and keeps at most 10 log files
             import os
-            from datetime import datetime
             from pathlib import Path
 
             script_dir = Path(__file__).resolve().parents[2]
@@ -96,7 +101,7 @@ class LoggerManager:
 
             env_log_file = os.environ.get("TIKTOK_RECORDER_LOG_FILE")
             if not env_log_file:
-                timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                timestamp = format_configured_time("%Y-%m-%d_%H-%M-%S")
                 log_filename = f"tiktok-recorder-{timestamp}.log"
                 os.environ["TIKTOK_RECORDER_LOG_FILE"] = log_filename
             else:
@@ -116,11 +121,11 @@ class LoggerManager:
                 encoding="utf-8",
             )
             file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(
-                logging.Formatter(
-                    "%(asctime)s [%(levelname)s] %(message)s", fmt_datefmt
-                )
+            file_fmt = logging.Formatter(
+                "%(asctime)s [%(levelname)s] %(message)s", fmt_datefmt
             )
+            file_fmt.converter = time_conv
+            file_handler.setFormatter(file_fmt)
             self.logger.addHandler(file_handler)
 
     @staticmethod

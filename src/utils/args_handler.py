@@ -124,10 +124,29 @@ def parse_args():
 
     parser.add_argument(
         "-telegram",
+        "--telegram",
         dest="telegram",
         action="store_true",
         help="Activate the option to upload the video to Telegram at the end "
         "of the recording.\nRequires configuring the telegram.json file",
+    )
+
+    parser.add_argument(
+        "-youtube",
+        "--youtube",
+        dest="youtube",
+        action="store_true",
+        help="Activate the option to upload the video to YouTube at the end "
+        "of the recording.\nRequires configuring the youtube.json file",
+    )
+
+    parser.add_argument(
+        "-timezone",
+        "--timezone",
+        dest="timezone",
+        default=None,
+        help="Specify the timezone for output file names, logs, and YouTube metadata (e.g. 'UTC+8', 'Asia/Manila'). [Default: UTC+8]",
+        action="store",
     )
 
     parser.add_argument(
@@ -257,6 +276,11 @@ def parse_args():
 
 def validate_and_parse_args():
     args = parse_args()
+
+    if getattr(args, "timezone", None):
+        from utils.timezone_manager import set_configured_timezone
+
+        set_configured_timezone(args.timezone)
 
     if args.user == "":
         args.user = None

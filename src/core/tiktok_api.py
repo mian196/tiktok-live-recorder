@@ -176,11 +176,13 @@ class TikTokAPI:
                     user_data = user_detail.get("userInfo", {}).get("user", {})
                     if user_data:
                         uid = user_data.get("uniqueId") or clean_user
+                        nickname = user_data.get("nickname") or uid
                         sec_uid = user_data.get("secUid")
                         user_id = user_data.get("id")
                         if sec_uid:
                             return {
                                 "username": uid,
+                                "nickname": nickname,
                                 "sec_uid": sec_uid,
                                 "user_id": str(user_id) if user_id else None,
                             }
@@ -191,6 +193,7 @@ class TikTokAPI:
             sec_uid_match = re.search(r'"secUid":"([^"]+)"', content)
             user_id_match = re.search(r'"userId":"(\d+)"|"id":"(\d+)"', content)
             unique_id_match = re.search(r'"uniqueId":"([^"]+)"', content)
+            nickname_match = re.search(r'"nickname":"([^"]+)"', content)
 
             sec_uid = sec_uid_match.group(1) if sec_uid_match else None
             user_id = (
@@ -199,10 +202,12 @@ class TikTokAPI:
                 else None
             )
             unique_id = unique_id_match.group(1) if unique_id_match else clean_user
+            nickname = nickname_match.group(1) if nickname_match else unique_id
 
             if sec_uid:
                 return {
                     "username": unique_id,
+                    "nickname": nickname,
                     "sec_uid": sec_uid,
                     "user_id": str(user_id) if user_id else None,
                 }

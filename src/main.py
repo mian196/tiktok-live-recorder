@@ -64,6 +64,7 @@ def _build_config(args, mode, cookies, user=None):
         output=args.output,
         duration=args.duration,
         use_telegram=args.telegram,
+        use_youtube=getattr(args, "youtube", False),
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         keep_flv=args.keep_flv,

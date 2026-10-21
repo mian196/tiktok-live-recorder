@@ -100,6 +100,7 @@ class TikTokRecorder:
         self.bitrate = config.bitrate
         self.ffmpeg_path = config.ffmpeg_path
         self.use_telegram = config.use_telegram
+        self.use_youtube = getattr(config, "use_youtube", False)
         self.keep_flv = config.keep_flv
         self.move_to_recycle_bin = getattr(config, "move_to_recycle_bin", True)
         self.retry_delay = getattr(config, "retry_delay", 5)
@@ -121,6 +122,11 @@ class TikTokRecorder:
             elif config.user:
                 self.tracked_users = parse_tracked_users(config.user)
 
+        self.user_nicknames: dict[str, str] = {}
+        for u in self.tracked_users:
+            if getattr(u, "nickname", None):
+                self.user_nicknames[u.username] = u.nickname
+
     def _save_tracked_users_to_config(self):
         """Persists current tracked user objects (with resolved sec_uid / user_id) to config.json."""
         try:
@@ -140,6 +146,9 @@ class TikTokRecorder:
                 if info and info.get("sec_uid"):
                     user_obj.sec_uid = info["sec_uid"]
                     user_obj.user_id = info.get("user_id")
+                    if info.get("nickname"):
+                        user_obj.nickname = info["nickname"]
+                        self.user_nicknames[user_obj.username] = info["nickname"]
                     logger.info(
                         f"[*] [ID-RESOLVE] Auto-discovered permanent ID for @{user_obj.username} "
                         f"(sec_uid: {user_obj.sec_uid[:16]}...) -> saved to configs/config.json"
@@ -576,7 +585,9 @@ class TikTokRecorder:
                 logger.debug(f"Error resetting session: {e}")
 
     def _build_output_path(self, user: str) -> str:
-        timestamp = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        from utils.timezone_manager import format_configured_time
+
+        timestamp = format_configured_time("%Y-%m-%d-%H-%M-%S")
         base_name = f"{user}-{timestamp}"
         output_dir = (Path(self.output) / user) if self.output else Path(".")
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -638,8 +649,10 @@ class TikTokRecorder:
                 size_mb=round(total_bytes / (1024 * 1024)),
             )
 
+            file_size_mb = round(total_bytes / (1024 * 1024))
+            telegram_uploaded = False
+
             if self.use_telegram:
-                file_size_mb = round(total_bytes / (1024 * 1024))
                 self.notify.notify(
                     "upload_started",
                     user=user,
@@ -650,13 +663,15 @@ class TikTokRecorder:
                 try:
                     from upload.telegram import Telegram
 
+                    purge_telegram = self.purge_after_upload and not self.use_youtube
                     uploaded = Telegram().upload(
                         output_file,
-                        purge_after=self.purge_after_upload,
+                        purge_after=purge_telegram,
                         ffmpeg_path=self.ffmpeg_path,
                     )
 
                     if uploaded:
+                        telegram_uploaded = True
                         self.notify.notify(
                             "upload_finished",
                             user=user,
@@ -680,6 +695,65 @@ class TikTokRecorder:
                         file=output_file,
                         error=str(e),
                         destination="Telegram",
+                    )
+
+            if self.use_youtube:
+                self.notify.notify(
+                    "upload_started",
+                    user=user,
+                    file=output_file,
+                    size_mb=file_size_mb,
+                    destination="YouTube",
+                )
+                try:
+                    from upload.youtube import YouTube
+
+                    purge_yt = self.purge_after_upload and (
+                        not self.use_telegram or telegram_uploaded
+                    )
+                    nickname = self.user_nicknames.get(user)
+                    if not nickname:
+                        try:
+                            u_info = self.tiktok.get_user_info(user)
+                            if u_info and u_info.get("nickname"):
+                                nickname = u_info["nickname"]
+                                self.user_nicknames[user] = nickname
+                        except Exception:
+                            pass
+
+                    uploaded = YouTube().upload(
+                        output_file,
+                        user=user,
+                        nickname=nickname or user,
+                        room_id=room_id,
+                        purge_after=purge_yt,
+                        ffmpeg_path=self.ffmpeg_path,
+                    )
+
+                    if uploaded:
+                        self.notify.notify(
+                            "upload_finished",
+                            user=user,
+                            file=output_file,
+                            size_mb=file_size_mb,
+                            destination="YouTube",
+                        )
+                    else:
+                        self.notify.notify(
+                            "upload_failed",
+                            user=user,
+                            file=output_file,
+                            error="Upload did not complete",
+                            destination="YouTube",
+                        )
+                except Exception as e:
+                    logger.error(f"YouTube upload failed: {e}")
+                    self.notify.notify(
+                        "upload_failed",
+                        user=user,
+                        file=output_file,
+                        error=str(e),
+                        destination="YouTube",
                     )
 
     def check_country_blacklisted(self):

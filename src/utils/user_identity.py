@@ -7,6 +7,7 @@ class TrackedUser:
     username: str
     sec_uid: str | None = None
     user_id: str | None = None
+    nickname: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {"username": self.username}
@@ -14,6 +15,8 @@ class TrackedUser:
             data["sec_uid"] = self.sec_uid
         if self.user_id:
             data["user_id"] = self.user_id
+        if self.nickname:
+            data["nickname"] = self.nickname
         return data
 
     @classmethod
@@ -28,10 +31,12 @@ class TrackedUser:
             clean_username = str(username).lstrip("@").strip()
             sec_uid = item.get("sec_uid") or item.get("secUid")
             user_id = item.get("user_id") or item.get("userId") or item.get("id")
+            nickname = item.get("nickname") or item.get("display_name")
             return cls(
                 username=clean_username,
                 sec_uid=str(sec_uid) if sec_uid else None,
                 user_id=str(user_id) if user_id else None,
+                nickname=str(nickname) if nickname else None,
             )
         return None
 

@@ -1,0 +1,30 @@
+{
+  "projects": [
+    {
+      "name": "Project 1 (Default)",
+      "client_secrets_file": "configs/client_secrets.json",
+      "credentials_storage_file": "configs/youtube_token.json"
+    },
+    {
+      "name": "Project 2 (Backup 1)",
+      "client_secrets_file": "configs/client_secrets_2.json",
+      "credentials_storage_file": "configs/youtube_token_2.json"
+    },
+    {
+      "name": "Project 3 (Backup 2)",
+      "client_secrets_file": "configs/client_secrets_3.json",
+      "credentials_storage_file": "configs/youtube_token_3.json"
+    }
+  ],
+  "queue_file": "configs/youtube_queue.json",
+  "privacy_status": "private",
+  "title_template": "{display_name} (@{username}) - TikTok Live ({date})",
+  "description_template": "Recorded with TikTok Live Recorder\nStreamer: {display_name} (@{username})\nUser ID: {user_id}\nDate: {date}\nTime: {time} ({timezone})",
+  "tags": [
+    "tiktok",
+    "live",
+    "recording"
+  ],
+  "category_id": null,
+  "made_for_kids": false
+}

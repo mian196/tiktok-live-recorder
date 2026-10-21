@@ -18,6 +18,9 @@ dependencies = [
     "urllib3>=2.0.0",
     "yt-dlp>=2024.0.0",
     "cryptg>=0.4.0",
+    "google-api-python-client>=2.201.0",
+    "google-auth-oauthlib>=1.5.0",
+    "google-auth-httplib2>=0.4.4",
 ]
 
 [project.optional-dependencies]

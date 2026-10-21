@@ -46,6 +46,11 @@
 
 <br />
 
+### How to Enable Upload To YouTube
+Follow our step-by-step setup guide here: [YouTube Upload Setup Guide](YOUTUBE_SETUP.md)
+
+<br />
+
 ### Restricted Country
 1) Italy
 2) Hong Kong

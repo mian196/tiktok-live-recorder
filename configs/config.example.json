@@ -14,6 +14,8 @@
   "duration": null,
   "proxy": "",
   "telegram": false,
+  "youtube": true,
+  "timezone": "UTC+8",
   "bitrate": "",
   "retry_delay": 5,
   "disk_space_alert_gb": 5,
