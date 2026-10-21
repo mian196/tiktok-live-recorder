@@ -364,3 +364,93 @@ def test_start_recording_dispatches_upload_notifications(tmp_path, monkeypatch):
     assert "recording_finished" in events_called
     assert "upload_started" in events_called
     assert "upload_finished" in events_called
+
+
+def test_automatic_mode_quiet_when_not_live():
+    from unittest.mock import patch
+    from core.tiktok_recorder import TikTokRecorder
+    from utils.recorder_config import RecorderConfig
+    from utils.enums import Mode
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC,
+            user="quiet_user",
+            automatic_interval=1,
+            cookies={},
+        )
+    )
+
+    class FakeOfflineAPI:
+        def get_room_id_from_user(self, u):
+            return "room_offline"
+
+        def is_room_alive(self, r):
+            return False
+
+        def is_country_blacklisted(self):
+            return False
+
+    recorder.tiktok = FakeOfflineAPI()
+
+    logs = []
+    with patch(
+        "core.tiktok_recorder.logger.info",
+        side_effect=lambda msg, *a, **kw: logs.append(str(msg)),
+    ):
+        with patch("time.sleep", side_effect=KeyboardInterrupt):
+            try:
+                recorder.automatic_mode()
+            except KeyboardInterrupt:
+                pass
+
+    # Should log the initial startup banner, but NOT repetitive "is not live" or "Waiting ... before recheck"
+    assert any("Watching @quiet_user" in log for log in logs)
+    assert not any("is not live" in log for log in logs)
+    assert not any("before recheck" in log for log in logs)
+
+
+def test_automatic_mode_logs_when_check_fails():
+    from unittest.mock import patch
+    from core.tiktok_recorder import TikTokRecorder
+    from utils.recorder_config import RecorderConfig
+    from utils.enums import Mode
+    from utils.custom_exceptions import UserLiveError
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.AUTOMATIC,
+            user="error_user",
+            automatic_interval=1,
+            cookies={},
+        )
+    )
+
+    class FakeErrorAPI:
+        def get_room_id_from_user(self, u):
+            return "12345"
+
+        def is_room_alive(self, r):
+            raise UserLiveError("WAF blocked request")
+
+        def is_country_blacklisted(self):
+            return False
+
+    recorder.tiktok = FakeErrorAPI()
+
+    warning_logs = []
+    with patch(
+        "core.tiktok_recorder.logger.warning",
+        side_effect=lambda msg, *a, **kw: warning_logs.append(str(msg)),
+    ):
+        with patch("time.sleep", side_effect=KeyboardInterrupt):
+            try:
+                recorder.automatic_mode()
+            except KeyboardInterrupt:
+                pass
+
+    # When a check actually fails, it must be logged as a warning
+    assert any(
+        "Check failed for @error_user: WAF blocked request" in log
+        for log in warning_logs
+    )

@@ -1,6 +1,9 @@
 import logging
+import os
 import sys
-from logging.handlers import RotatingFileHandler
+import time
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
+from pathlib import Path
 
 
 class MaxLevelFilter(logging.Filter):
@@ -51,6 +54,58 @@ class StatusBarAwareStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
+class MidnightRotatingFileHandler(TimedRotatingFileHandler, RotatingFileHandler):
+    """
+    Rotating file handler that rotates daily at midnight to create a new file
+    named tiktok-recorder-YYYY-MM-DD.log, keeping at most max_files historical logs.
+    """
+
+    def __init__(
+        self,
+        filename,
+        log_dir=None,
+        max_files=10,
+        encoding="utf-8",
+        delay=False,
+        errors=None,
+    ):
+        TimedRotatingFileHandler.__init__(
+            self,
+            filename=str(filename),
+            when="midnight",
+            interval=1,
+            backupCount=max_files,
+            encoding=encoding,
+            delay=delay,
+            errors=errors,
+        )
+        self.maxBytes = 0
+        self.log_dir = Path(log_dir) if log_dir else Path(filename).parent
+        self.max_files = max_files
+
+    def doRollover(self):
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        from utils.timezone_manager import format_configured_time
+
+        today_str = format_configured_time("%Y-%m-%d")
+        new_file = self.log_dir / f"tiktok-recorder-{today_str}.log"
+        self.baseFilename = os.path.abspath(str(new_file))
+        if not self.delay:
+            self.stream = self._open()
+        currentTime = int(time.time())
+        newRolloverAt = self.computeRollover(currentTime)
+        while newRolloverAt <= currentTime:
+            newRolloverAt = newRolloverAt + self.interval
+        self.rolloverAt = newRolloverAt
+        LoggerManager.cleanup_old_logs(
+            self.log_dir,
+            max_files=self.max_files,
+            current_file=Path(self.baseFilename),
+        )
+
+
 class LoggerManager:
     _instance = None
 
@@ -91,17 +146,13 @@ class LoggerManager:
             error_handler.setFormatter(err_fmt)
             self.logger.addHandler(error_handler)
 
-            # 3) File handler — DEBUG level, includes full stack traces
-            #    Creates a dedicated log file per run session and keeps at most 10 log files
-            import os
-            from pathlib import Path
-
+            # 3) File handler — rotates daily at midnight, keeps at most 10 log files
             script_dir = Path(__file__).resolve().parents[2]
             log_dir = script_dir / "output" / "logs"
 
             env_log_file = os.environ.get("TIKTOK_RECORDER_LOG_FILE")
             if not env_log_file:
-                timestamp = format_configured_time("%Y-%m-%d_%H-%M-%S")
+                timestamp = format_configured_time("%Y-%m-%d")
                 log_filename = f"tiktok-recorder-{timestamp}.log"
                 os.environ["TIKTOK_RECORDER_LOG_FILE"] = log_filename
             else:
@@ -114,10 +165,10 @@ class LoggerManager:
             except OSError:
                 log_file = Path(log_filename)
 
-            file_handler = RotatingFileHandler(
+            file_handler = MidnightRotatingFileHandler(
                 str(log_file),
-                maxBytes=10 * 1024 * 1024,
-                backupCount=0,
+                log_dir=log_dir,
+                max_files=10,
                 encoding="utf-8",
             )
             file_handler.setLevel(logging.DEBUG)

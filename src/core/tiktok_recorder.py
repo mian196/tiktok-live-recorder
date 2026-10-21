@@ -354,6 +354,10 @@ class TikTokRecorder:
         self.start_recording(self.user, self.room_id)
 
     def automatic_mode(self):
+        logger.info(
+            f"Watching @{self.user} (interval: {format_interval(self.automatic_interval)}). "
+            "Checking is quiet: logs will appear when live stream is detected or if an error occurs.\n"
+        )
         while True:
             try:
                 if not self._check_disk_space(self.user):
@@ -378,20 +382,20 @@ class TikTokRecorder:
                     if getattr(self, "_last_recording_stopped_by_user", False):
                         self._last_recording_stopped_by_user = False
                         logger.info(
-                            f"Recording stopped for @{self.user}. Waiting {format_interval(self.automatic_interval)} before recheck...\n"
+                            f"Recording stopped for @{self.user}. Resuming live check (every {format_interval(self.automatic_interval)})...\n"
                         )
                         time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
                 else:
-                    logger.info(
-                        f"@{self.user} is not live. Waiting {format_interval(self.automatic_interval)} before recheck...\n"
-                    )
                     time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (UserLiveError, LiveNotFound) as ex:
-                logger.info(ex)
-                logger.info(
-                    f"Waiting {format_interval(self.automatic_interval)} before recheck\n"
-                )
+                ex_str = str(ex)
+                if (
+                    TikTokError.USER_NOT_CURRENTLY_LIVE.value not in ex_str
+                    and str(TikTokError.USER_NOT_CURRENTLY_LIVE) not in ex_str
+                    and not isinstance(ex, LiveNotFound)
+                ):
+                    logger.warning(f"Check failed for @{self.user}: {ex}")
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (ConnectionError, RequestException, HTTPException, OSError) as ex:
@@ -471,7 +475,15 @@ class TikTokRecorder:
                             thread.start()
                             active_recordings[curr_user] = thread
                     except (UserLiveError, LiveNotFound) as ex:
-                        logger.info(ex)
+                        ex_str = str(ex)
+                        if (
+                            TikTokError.USER_NOT_CURRENTLY_LIVE.value not in ex_str
+                            and str(TikTokError.USER_NOT_CURRENTLY_LIVE) not in ex_str
+                            and not isinstance(ex, LiveNotFound)
+                        ):
+                            logger.warning(
+                                f"Check failed for @{user_obj.username}: {ex}"
+                            )
                     except (
                         ConnectionError,
                         RequestException,
@@ -492,12 +504,6 @@ class TikTokRecorder:
 
                     time.sleep(TimeOut.USER_CHECK_DELAY)
 
-                active_count = sum(
-                    1 for t in active_recordings.values() if t.is_alive()
-                )
-                logger.info(
-                    f"All users checked ({active_count} actively recording). Waiting {format_interval(self.automatic_interval)}...\n"
-                )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
         except KeyboardInterrupt:
             logger.info("Ctrl+C detected. Gracefully stopping all active recordings...")
@@ -554,17 +560,16 @@ class TikTokRecorder:
                         )
                         continue
 
-                print()
-                logger.info(
-                    f"Waiting {format_interval(self.automatic_interval)} for the next check..."
-                )
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (UserLiveError, LiveNotFound) as ex:
-                logger.info(ex)
-                logger.info(
-                    f"Waiting {format_interval(self.automatic_interval)} before recheck\n"
-                )
+                ex_str = str(ex)
+                if (
+                    TikTokError.USER_NOT_CURRENTLY_LIVE.value not in ex_str
+                    and str(TikTokError.USER_NOT_CURRENTLY_LIVE) not in ex_str
+                    and not isinstance(ex, LiveNotFound)
+                ):
+                    logger.warning(f"Check failed: {ex}")
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
             except (ConnectionError, RequestException, HTTPException, OSError):
