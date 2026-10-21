@@ -51,42 +51,19 @@ Follow our step-by-step setup guide here: [YouTube Upload Setup Guide](YOUTUBE_S
 
 <br />
 
+### Pre-Authentication Helper (Telegram & YouTube)
+You can authenticate your accounts in advance before starting recordings or deploying to a headless server / Docker container:
+
+```bash
+python auth.py --telegram  # Authenticates Telegram session interactively in terminal
+python auth.py --youtube   # Authenticates YouTube OAuth2 projects in browser
+python auth.py --all       # Authenticates both
+```
+
+> [!TIP]
+> **Server & Docker Deployments**: Authenticate on your local desktop first, then transfer `configs/youtube_token.json` and `tiktok_live_recorder_session.session` to your remote server for 100% headless 24/7 background operation.
+
+<br />
+
 ### Restricted Country
-1) Italy
-2) Hong Kong
-3) UK
-
-
-### Unrestricted Country
-1) Switzerland
-2) Australia
-3) Austria
-4) Belgium
-5) Brazil
-6) Bulgaria
-7) Canada
-8) Czech Republic
-9) Denmark
-10) Estonia
-11) Finland
-12) France
-13) Germany
-14) Ireland
-15) Israel
-16) Japan
-17) Latvia
-18) Luxembourg
-19) Moldova
-20) Netherlands
-21) New Zealand
-22) North Macedonia
-23) Norway
-24) Poland
-25) Portugal
-26) Romania
-27) Serbia
-28) Singapore
-29) Slovakia
-30) Spain
-31) Sweden
-32) USA
+Telegram is banned in many countries check the full list in this [Wikepedia Artcile](https://en.wikipedia.org/wiki/Censorship_of_Telegram) 

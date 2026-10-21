@@ -195,3 +195,36 @@ What happens if all configured projects exhaust their daily quota?
 2. **Automatic Queue**: The recording file is saved to `configs/youtube_queue.json`.
 3. **Midnight Pacific Time Reset**: YouTube API quotas reset every day at **midnight Pacific Time (00:00 PT)**.
 4. **Auto-Retry**: The recorder calculates the exact reset time. The next time the recorder runs or completes a stream after midnight PT, it automatically flushes the queue and uploads all backlogged recordings to YouTube.
+
+
+---
+
+## Step 10: Headless Server, VPS, & Docker Deployment
+
+On a remote server or Docker container without a graphical desktop or web browser, Google's browser popup cannot open automatically. Use either of the two workflows below:
+
+### Method A: Local Pre-Authentication & File Transfer (Recommended)
+This is the easiest and most reliable method:
+1. Clone or set up the repository on your local computer (Windows, macOS, or Linux desktop).
+2. Place your `client_secrets.json` into `configs/`.
+3. Run the helper script to authenticate:
+   ```bash
+   python auth.py --youtube
+   ```
+4. A browser window opens on your computer. Log in and grant permission.
+5. The token is saved to `configs/youtube_token.json` (and `configs/youtube_token_2.json` for backup projects).
+6. **Copy these generated token file(s)** to your remote server or Docker volume in the `configs/` folder:
+   ```bash
+   scp configs/youtube_token*.json user@your-server:/path/to/tiktok-live-recorder/configs/
+   ```
+7. That's it! Your server will now run 24/7 and silently auto-refresh the token in the background without ever needing browser interaction.
+
+### Method B: Pre-Authentication via Helper Script
+You can run the interactive authentication helper on the server before starting live recordings:
+```bash
+python auth.py --youtube
+```
+If you are connected via SSH, forward the callback port to your local machine:
+```bash
+ssh -L 8080:localhost:8080 user@your-server-ip
+```
