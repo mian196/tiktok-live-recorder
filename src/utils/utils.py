@@ -134,6 +134,10 @@ def update_tracked_users_in_config(tracked_users: list) -> bool:
                     ex_u.sec_uid = new_u.sec_uid
                 if new_u.user_id:
                     ex_u.user_id = new_u.user_id
+                if new_u.nickname:
+                    ex_u.nickname = new_u.nickname
+                if new_u.playlist:
+                    ex_u.playlist = new_u.playlist
                 matched = True
                 break
         if not matched:
