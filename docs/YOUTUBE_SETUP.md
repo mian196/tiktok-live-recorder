@@ -238,7 +238,7 @@ You can automatically organize uploaded live streams into separate YouTube playl
 
 ### Supported Playlist Identification:
 - **Playlist ID**: Direct YouTube ID (e.g. `PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`).
-- **Playlist Name / Title**: You can simply write the title you want (e.g. `"Nurse Don Law Live Archive"` or `"Philippines Streams"`). If the playlist does not exist yet on your channel, **the tool will automatically create it for you**!
+- **Playlist Name / Title**: You can simply write the title you want (e.g. `"Nurse Don Law Live Archive"` or `"Weekly Streams"`). If the playlist does not exist yet on your channel, **the tool will automatically create it for you**!
 
 ### Option 1: Configure in `configs/youtube.json`
 ```json

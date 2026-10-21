@@ -7,18 +7,37 @@ _OVERRIDE_TIMEZONE = None
 _OVERRIDE_DISPLAY_NAME = None
 
 
+def _get_new_york_timezone() -> tuple[timezone, str]:
+    """Returns New York timezone taking Daylight Saving Time (EDT vs EST) into account."""
+    now_utc = datetime.now(timezone.utc)
+    year = now_utc.year
+    march_first = datetime(year, 3, 1, tzinfo=timezone.utc)
+    dst_start = datetime(
+        year, 3, 8 + (6 - march_first.weekday()) % 7, 2, tzinfo=timezone.utc
+    )
+    nov_first = datetime(year, 11, 1, tzinfo=timezone.utc)
+    dst_end = datetime(
+        year, 11, 1 + (6 - nov_first.weekday()) % 7, 2, tzinfo=timezone.utc
+    )
+
+    if dst_start <= now_utc < dst_end:
+        return timezone(timedelta(hours=-4)), "UTC-04:00 (EDT)"
+    else:
+        return timezone(timedelta(hours=-5)), "UTC-05:00 (EST)"
+
+
 def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
     """
     Parses a timezone configuration into a datetime.tzinfo object and a human-readable display string.
     Supports formats like:
-      - 'UTC+8', 'UTC+08:00', '+8', '+08:00'
-      - 'UTC-5', '-5', '-05:00'
-      - 'Asia/Manila', 'Philippines', 'PHT'
-      - Numbers: 8, 8.0, -5
-    Defaults to UTC+8 (Philippines Standard Time).
+      - 'UTC-5', 'UTC-05:00', '-5', '-05:00'
+      - 'UTC+8', '+8', '+08:00'
+      - 'America/New_York', 'New York', 'EST', 'EDT'
+      - Numbers: -5, -4, 8
+    Defaults to New York (America/New_York).
     """
     if val is None or val == "":
-        val = "UTC+8"
+        return _get_new_york_timezone()
 
     if isinstance(val, (int, float)):
         offset_hours = float(val)
@@ -28,10 +47,13 @@ def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
 
     val_str = str(val).strip()
 
+    clean_key = val_str.lower().replace(" ", "").replace("_", "")
+    if clean_key in {"newyork", "americanewyork", "useastern", "eastern"}:
+        return _get_new_york_timezone()
+
     aliases = {
-        "philippines": (timezone(timedelta(hours=8)), "UTC+08:00 (PHT)"),
-        "asia/manila": (timezone(timedelta(hours=8)), "UTC+08:00 (PHT)"),
-        "pht": (timezone(timedelta(hours=8)), "UTC+08:00 (PHT)"),
+        "est": (timezone(timedelta(hours=-5)), "UTC-05:00 (EST)"),
+        "edt": (timezone(timedelta(hours=-4)), "UTC-04:00 (EDT)"),
         "utc": (timezone.utc, "UTC"),
         "gmt": (timezone.utc, "GMT"),
     }
@@ -64,8 +86,8 @@ def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
         )
         return tz, display
 
-    # Default fallback: Philippines UTC+8
-    return timezone(timedelta(hours=8)), "UTC+08:00 (PHT)"
+    # Default fallback: New York
+    return _get_new_york_timezone()
 
 
 def set_configured_timezone(tz_value: str | int | float | None):
@@ -83,17 +105,17 @@ def get_configured_timezone() -> timezone:
     if _OVERRIDE_TIMEZONE is not None:
         return _OVERRIDE_TIMEZONE
     cfg = read_config()
-    tz_val = cfg.get("timezone", "UTC+8")
+    tz_val = cfg.get("timezone", "New York")
     tz, _ = parse_timezone(tz_val)
     return tz
 
 
 def get_timezone_display_name() -> str:
-    """Returns a friendly display string for the configured timezone (e.g. 'UTC+08:00')."""
+    """Returns a friendly display string for the configured timezone (e.g. 'UTC-04:00')."""
     if _OVERRIDE_DISPLAY_NAME is not None:
         return _OVERRIDE_DISPLAY_NAME
     cfg = read_config()
-    tz_val = cfg.get("timezone", "UTC+8")
+    tz_val = cfg.get("timezone", "New York")
     _, name = parse_timezone(tz_val)
     return name
 

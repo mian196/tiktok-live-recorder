@@ -284,6 +284,20 @@ class YouTube:
                     if users.lstrip("@").strip().lower() == clean_user:
                         return str(pl_target).strip()
 
+        # Check config.json tracked users as single source of truth
+        try:
+            from utils.user_identity import parse_tracked_users
+            from utils.utils import read_config
+
+            cfg = read_config()
+            if cfg:
+                raw_users = cfg.get("users") if "users" in cfg else cfg.get("user")
+                for u in parse_tracked_users(raw_users):
+                    if u.username.lower() == clean_user and u.playlist:
+                        return str(u.playlist).strip()
+        except Exception:
+            pass
+
         if self.default_playlist:
             return str(self.default_playlist).strip()
 

@@ -451,7 +451,7 @@ def test_process_queue_flushes_pending_uploads(tmp_path, monkeypatch):
 def test_format_metadata_with_display_name_and_timezone():
     from utils.timezone_manager import set_configured_timezone
 
-    set_configured_timezone("Asia/Manila")
+    set_configured_timezone("New York")
 
     yt = YouTube(
         config_override={
@@ -465,16 +465,18 @@ def test_format_metadata_with_display_name_and_timezone():
     assert "Streamer: Charli D'Amelio" in desc
     assert "Handle: @charlidamelio" in desc
     assert "ID: charlidamelio" in desc
-    assert "UTC+08:00" in desc
+    assert "EDT" in desc or "EST" in desc
 
     set_configured_timezone(None)
 
 
-def test_timezone_manager_philippines():
+def test_timezone_manager_new_york():
     from utils.timezone_manager import format_configured_time, parse_timezone
 
-    _tz, name = parse_timezone("Philippines")
-    assert "08:00" in name
+    _tz, name = parse_timezone("New York")
+    assert "EDT" in name or "EST" in name
+    _tz_def, name_def = parse_timezone(None)
+    assert "EDT" in name_def or "EST" in name_def
     formatted = format_configured_time("%Y-%m-%d")
     assert len(formatted) == 10
 
@@ -505,7 +507,24 @@ def test_get_playlist_for_streamer_precedence():
     assert yt.get_playlist_for_streamer("streamer2") == "Gaming Group"
     assert yt.get_playlist_for_streamer("@streamer3") == "Gaming Group"
 
-    # 4. Fallback to default_playlist
+    # 4. Fallback to config.json tracked user if not in youtube.json
+    yt_no_default = YouTube(config_override={})
+    import utils.utils as utils_mod
+
+    monkeypatch_config = {
+        "user": [{"username": "solo_creator", "playlist": "Solo Creator Archive"}]
+    }
+    orig_read = utils_mod.read_config
+    try:
+        utils_mod.read_config = lambda: monkeypatch_config
+        assert (
+            yt_no_default.get_playlist_for_streamer("solo_creator")
+            == "Solo Creator Archive"
+        )
+    finally:
+        utils_mod.read_config = orig_read
+
+    # 5. Fallback to default_playlist
     assert yt.get_playlist_for_streamer("other_streamer") == "Default PL"
 
 

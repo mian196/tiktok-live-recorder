@@ -23,7 +23,7 @@
   },
   "playlists": {
     "Gaming Streams": ["streamer3", "streamer4"],
-    "Philippines Creators": ["streamer5", "streamer6"]
+    "Vlog Creators": ["streamer5", "streamer6"]
   },
   "queue_file": "configs/youtube_queue.json",
   "privacy_status": "private",
