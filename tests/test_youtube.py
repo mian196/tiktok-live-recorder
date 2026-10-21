@@ -1,8 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import httplib2
 import pytest
 from googleapiclient.errors import HttpError
 
@@ -11,8 +10,8 @@ from upload.youtube import (
     get_next_pacific_midnight,
     is_quota_exceeded,
 )
-from utils.recorder_config import RecorderConfig
 from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
 
 
 @pytest.fixture(autouse=True)
@@ -278,14 +277,14 @@ def test_dual_upload_purge_coordination(tmp_path, monkeypatch):
 
 def test_pacific_midnight_calculation():
     ts = get_next_pacific_midnight()
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     # Next midnight must be in the future (within 25 hours)
     assert ts > now_ts
     assert (ts - now_ts) <= 25 * 3600
 
 
 def test_is_quota_exceeded():
-    resp_403 = httplib2.Response({"status": "403"})
+    resp_403 = MagicMock(status=403, reason="Forbidden")
     err_quota = HttpError(
         resp_403, b'{"error": {"errors": [{"reason": "quotaExceeded"}]}}'
     )
@@ -299,7 +298,7 @@ def test_is_quota_exceeded():
     err_other_403 = HttpError(resp_403, b'{"error": {"message": "forbidden"}}')
     assert is_quota_exceeded(err_other_403) is False
 
-    resp_500 = httplib2.Response({"status": "500"})
+    resp_500 = MagicMock(status=500, reason="Error")
     err_500 = HttpError(resp_500, b'{"error": {"message": "internal"}}')
     assert is_quota_exceeded(err_500) is False
 
@@ -326,7 +325,7 @@ def test_multi_project_rotation_on_quota_exceeded(tmp_path, monkeypatch):
     }
     yt = YouTube(config_override=cfg)
 
-    resp_403 = httplib2.Response({"status": "403"})
+    resp_403 = MagicMock(status=403, reason="Forbidden")
     quota_err = HttpError(
         resp_403, b'{"error": {"errors": [{"reason": "quotaExceeded"}]}}'
     )
@@ -374,7 +373,7 @@ def test_all_projects_exhausted_enqueues_file(tmp_path, monkeypatch):
     }
     yt = YouTube(config_override=cfg)
 
-    resp_403 = httplib2.Response({"status": "403"})
+    resp_403 = MagicMock(status=403, reason="Forbidden")
     quota_err = HttpError(
         resp_403, b'{"error": {"errors": [{"reason": "quotaExceeded"}]}}'
     )
@@ -472,9 +471,112 @@ def test_format_metadata_with_display_name_and_timezone():
 
 
 def test_timezone_manager_philippines():
-    from utils.timezone_manager import parse_timezone, format_configured_time
+    from utils.timezone_manager import format_configured_time, parse_timezone
 
-    tz, name = parse_timezone("Philippines")
+    _tz, name = parse_timezone("Philippines")
     assert "08:00" in name
     formatted = format_configured_time("%Y-%m-%d")
     assert len(formatted) == 10
+
+
+def test_get_playlist_for_streamer_precedence():
+    cfg = {
+        "default_playlist": "Default PL",
+        "streamer_playlists": {
+            "streamer1": "Streamer 1 PL",
+        },
+        "playlists": {
+            "Gaming Group": ["streamer2", "streamer3"],
+        },
+    }
+    yt = YouTube(config_override=cfg)
+
+    # 1. Explicit override
+    assert (
+        yt.get_playlist_for_streamer("streamer1", explicit_playlist="Override PL")
+        == "Override PL"
+    )
+
+    # 2. streamer_playlists mapping
+    assert yt.get_playlist_for_streamer("streamer1") == "Streamer 1 PL"
+    assert yt.get_playlist_for_streamer("@streamer1") == "Streamer 1 PL"
+
+    # 3. Grouped playlists mapping
+    assert yt.get_playlist_for_streamer("streamer2") == "Gaming Group"
+    assert yt.get_playlist_for_streamer("@streamer3") == "Gaming Group"
+
+    # 4. Fallback to default_playlist
+    assert yt.get_playlist_for_streamer("other_streamer") == "Default PL"
+
+
+def test_resolve_playlist_id_direct_pl_id():
+    yt = YouTube()
+    mock_service = MagicMock()
+    res = yt._resolve_playlist_id(mock_service, "PL1234567890abcdef")
+    assert res == "PL1234567890abcdef"
+    # No network call needed for direct PL IDs
+    mock_service.playlists().list.assert_not_called()
+
+
+def test_resolve_playlist_by_title_found():
+    yt = YouTube()
+    mock_service = MagicMock()
+    mock_list_req = MagicMock()
+    mock_list_req.execute.return_value = {
+        "items": [{"snippet": {"title": "Streamer Archive"}, "id": "PL_FOUND_123"}]
+    }
+    mock_service.playlists().list.return_value = mock_list_req
+    mock_service.playlists().list_next.return_value = None
+
+    resolved = yt._resolve_playlist_id(mock_service, "Streamer Archive")
+    assert resolved == "PL_FOUND_123"
+
+
+def test_resolve_playlist_by_title_autocreate():
+    yt = YouTube()
+    mock_service = MagicMock()
+    mock_list_req = MagicMock()
+    mock_list_req.execute.return_value = {"items": []}
+    mock_service.playlists().list.return_value = mock_list_req
+    mock_service.playlists().list_next.return_value = None
+
+    mock_insert_req = MagicMock()
+    mock_insert_req.execute.return_value = {"id": "PL_CREATED_NEW"}
+    mock_service.playlists().insert.return_value = mock_insert_req
+
+    resolved = yt._resolve_playlist_id(mock_service, "New Streamer Playlist")
+    assert resolved == "PL_CREATED_NEW"
+    mock_service.playlists().insert.assert_called_once()
+
+
+def test_upload_adds_video_to_playlist(tmp_path, monkeypatch):
+    video = tmp_path / "pl_video.mp4"
+    video.write_bytes(b"data" * 200)
+
+    cfg = {
+        "streamer_playlists": {"gamer": "PL_GAMER_123"},
+        "queue_file": str(tmp_path / "q.json"),
+    }
+    yt = YouTube(config_override=cfg)
+
+    mock_service = MagicMock()
+    # Video upload insert
+    mock_video_insert = MagicMock()
+    mock_video_insert.next_chunk.return_value = (None, {"id": "uploaded_vid_999"})
+    mock_service.videos.return_value.insert.return_value = mock_video_insert
+
+    # Playlist item insert
+    mock_pl_item_insert = MagicMock()
+    mock_service.playlistItems().insert.return_value = mock_pl_item_insert
+
+    monkeypatch.setattr(
+        yt, "_get_authenticated_service_for_project", lambda p: mock_service
+    )
+
+    success = yt.upload(str(video), user="gamer")
+    assert success is True
+    # Verify playlistItems().insert was called with playlistId and videoId
+    mock_service.playlistItems().insert.assert_called_once()
+    call_kwargs = mock_service.playlistItems().insert.call_args[1]
+    assert call_kwargs["body"]["snippet"]["playlistId"] == "PL_GAMER_123"
+    assert call_kwargs["body"]["snippet"]["resourceId"]["videoId"] == "uploaded_vid_999"

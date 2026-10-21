@@ -150,6 +150,15 @@ def parse_args():
     )
 
     parser.add_argument(
+        "-playlist",
+        "--playlist",
+        dest="playlist",
+        default=None,
+        help="Specify YouTube playlist ID or title to add the uploaded video to.",
+        action="store",
+    )
+
+    parser.add_argument(
         "-bitrate",
         dest="bitrate",
         help="Specify the bitrate for the output file (e.g. 1000k, 1M). Default: None (keep original)",

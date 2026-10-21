@@ -3,12 +3,12 @@ import os
 import socket
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from utils.logger_manager import logger
-from utils.utils import _get_config_path, read_youtube_config
 from utils.timezone_manager import get_configured_now, get_timezone_display_name
+from utils.utils import _get_config_path, read_youtube_config
 
 try:
     import httplib2
@@ -49,11 +49,11 @@ def get_pacific_offset_hours(dt_utc: datetime) -> int:
     year = dt_utc.year
     march_first_weekday = datetime(year, 3, 1).weekday()
     second_sunday_day = 1 + (6 - march_first_weekday) % 7 + 7
-    dst_start = datetime(year, 3, second_sunday_day, 10, 0, tzinfo=timezone.utc)
+    dst_start = datetime(year, 3, second_sunday_day, 10, 0, tzinfo=UTC)
 
     nov_first_weekday = datetime(year, 11, 1).weekday()
     first_sunday_day = 1 + (6 - nov_first_weekday) % 7
-    dst_end = datetime(year, 11, first_sunday_day, 9, 0, tzinfo=timezone.utc)
+    dst_end = datetime(year, 11, first_sunday_day, 9, 0, tzinfo=UTC)
 
     if dst_start <= dt_utc < dst_end:
         return -7
@@ -62,7 +62,7 @@ def get_pacific_offset_hours(dt_utc: datetime) -> int:
 
 def get_next_pacific_midnight() -> float:
     """Return the UNIX timestamp of the next midnight Pacific Time (when quota resets)."""
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     offset = get_pacific_offset_hours(now_utc)
     pt_tz = timezone(timedelta(hours=offset))
     now_pt = now_utc.astimezone(pt_tz)
@@ -74,10 +74,9 @@ def get_next_pacific_midnight() -> float:
 
 def is_quota_exceeded(error: Exception) -> bool:
     """Check if an HttpError is due to daily YouTube quota exhaustion."""
-    if HAS_GOOGLE_API and isinstance(error, HttpError):
-        if error.resp.status == 403:
-            content = str(getattr(error, "content", b"")).lower()
-            return "quotaexceeded" in content or "dailylimitexceeded" in content
+    if HAS_GOOGLE_API and isinstance(error, HttpError) and error.resp.status == 403:
+        content = str(getattr(error, "content", b"")).lower()
+        return "quotaexceeded" in content or "dailylimitexceeded" in content
     return False
 
 
@@ -174,6 +173,9 @@ class YouTube:
             else None
         )
         self.made_for_kids = bool(cfg.get("made_for_kids", False))
+        self.default_playlist = cfg.get("default_playlist")
+        self.streamer_playlists = cfg.get("streamer_playlists", {})
+        self.grouped_playlists = cfg.get("playlists", {})
 
     def _get_authenticated_service_for_project(self, project: dict):
         """Authenticate and return the YouTube v3 service instance for a specific project configuration."""
@@ -251,6 +253,129 @@ class YouTube:
         """Legacy helper returning service for the first project."""
         return self._get_authenticated_service_for_project(self.projects[0])
 
+    def get_playlist_for_streamer(
+        self, user: str, explicit_playlist: str | None = None
+    ) -> str | None:
+        """
+        Resolves the playlist ID or Title for a streamer.
+        Precedence:
+          1. explicit_playlist (from CLI or config.json user entry)
+          2. configs/youtube.json -> streamer_playlists: {"username": "playlist"}
+          3. configs/youtube.json -> playlists: {"playlist": ["user1", "user2"]}
+          4. configs/youtube.json -> default_playlist
+        """
+        if explicit_playlist:
+            return explicit_playlist.strip()
+
+        clean_user = (user or "").lstrip("@").strip().lower()
+
+        if self.streamer_playlists and isinstance(self.streamer_playlists, dict):
+            for k, v in self.streamer_playlists.items():
+                if k.lstrip("@").strip().lower() == clean_user and v:
+                    return str(v).strip()
+
+        if self.grouped_playlists and isinstance(self.grouped_playlists, dict):
+            for pl_target, users in self.grouped_playlists.items():
+                if isinstance(users, (list, tuple)):
+                    for u in users:
+                        if str(u).lstrip("@").strip().lower() == clean_user:
+                            return str(pl_target).strip()
+                elif isinstance(users, str):
+                    if users.lstrip("@").strip().lower() == clean_user:
+                        return str(pl_target).strip()
+
+        if self.default_playlist:
+            return str(self.default_playlist).strip()
+
+        return None
+
+    def _resolve_playlist_id(self, service, playlist_target: str) -> str | None:
+        """
+        Resolves a playlist target (either a 'PL...' ID or a playlist title) to a valid playlist ID.
+        If a title is given and does not exist on the channel, automatically creates it.
+        """
+        target = playlist_target.strip()
+        if target.startswith(("PL", "UUL", "FL", "LL", "RD")) and len(target) >= 12:
+            return target
+
+        try:
+            request = service.playlists().list(
+                part="snippet",
+                mine=True,
+                maxResults=50,
+            )
+            while request is not None:
+                response = request.execute()
+                if not isinstance(response, dict):
+                    break
+                for item in response.get("items", []):
+                    pl_title = item.get("snippet", {}).get("title", "").strip()
+                    if pl_title.lower() == target.lower():
+                        return item.get("id")
+                if not response.get("nextPageToken"):
+                    break
+                request = service.playlists().list_next(request, response)
+        except Exception as e:
+            logger.debug(f"Could not search channel playlists: {e}")
+
+        try:
+            logger.info(
+                f"Playlist '{target}' not found on channel. Automatically creating it..."
+            )
+            create_req = service.playlists().insert(
+                part="snippet,status",
+                body={
+                    "snippet": {
+                        "title": target,
+                        "description": f"Automated recordings for {target}",
+                    },
+                    "status": {
+                        "privacyStatus": self.privacy_status,
+                    },
+                },
+            )
+            created = create_req.execute()
+            new_id = created.get("id")
+            logger.info(f"Created new YouTube playlist: '{target}' ({new_id})")
+            return new_id
+        except Exception as e:
+            logger.warning(f"Could not auto-create playlist '{target}': {e}")
+            return None
+
+    def _add_video_to_playlist(
+        self, service, video_id: str, playlist_target: str
+    ) -> bool:
+        """Adds an uploaded video to the resolved YouTube playlist."""
+        if not playlist_target:
+            return False
+
+        try:
+            playlist_id = self._resolve_playlist_id(service, playlist_target)
+            if not playlist_id:
+                logger.warning(f"Could not resolve playlist ID for '{playlist_target}'")
+                return False
+
+            req = service.playlistItems().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "playlistId": playlist_id,
+                        "resourceId": {
+                            "kind": "youtube#video",
+                            "videoId": video_id,
+                        },
+                    }
+                },
+            )
+            req.execute()
+            logger.info(f"Added video to playlist [{playlist_target}] ({playlist_id})!")
+            return True
+        except Exception as e:
+            logger.warning(
+                f"Could not add video {video_id} to playlist [{playlist_target}]: {e}"
+            )
+            return False
+
     def _format_metadata(
         self, user: str, source_path: Path, nickname: str = "", room_id: str = ""
     ) -> tuple[str, str]:
@@ -313,6 +438,7 @@ class YouTube:
         user: str = "",
         nickname: str = "",
         room_id: str = "",
+        playlist: str | None = None,
         purge_after: bool = False,
         error_reason: str = "quotaExceeded",
     ):
@@ -335,6 +461,7 @@ class YouTube:
                 "user": user,
                 "nickname": nickname,
                 "room_id": str(room_id or ""),
+                "playlist": playlist,
                 "purge_after": purge_after,
                 "added_at": time.time(),
                 "retry_after": retry_after,
@@ -383,6 +510,7 @@ class YouTube:
                 user = item.get("user", "")
                 nickname = item.get("nickname", "")
                 room_id = item.get("room_id", "")
+                pl = item.get("playlist")
                 purge = item.get("purge_after", False)
                 logger.info(
                     f"Retrying pending YouTube upload from queue: '{Path(fpath).name}'..."
@@ -393,6 +521,7 @@ class YouTube:
                     user=user,
                     nickname=nickname,
                     room_id=room_id,
+                    playlist=pl,
                     purge_after=purge,
                     is_queued_retry=True,
                 )
@@ -416,6 +545,7 @@ class YouTube:
         user: str = "",
         nickname: str = "",
         room_id: str = "",
+        playlist: str | None = None,
         purge_after: bool = False,
         is_queued_retry: bool = False,
     ) -> bool:
@@ -562,6 +692,12 @@ class YouTube:
                         f"YouTube upload finished successfully via [{p_name}]! Video URL: {video_url}\n"
                     )
 
+                    target_pl = self.get_playlist_for_streamer(
+                        user, explicit_playlist=playlist
+                    )
+                    if video_id and target_pl:
+                        self._add_video_to_playlist(service, video_id, target_pl)
+
                     if hasattr(media, "_fd") and media._fd:
                         try:
                             media._fd.close()
@@ -603,6 +739,7 @@ class YouTube:
                 user=user,
                 nickname=nickname,
                 room_id=room_id,
+                playlist=playlist,
                 purge_after=purge_after,
                 error_reason="quotaExceeded",
             )
@@ -618,14 +755,16 @@ class YouTube:
         user: str = "",
         nickname: str = "",
         room_id: str = "",
+        playlist: str | None = None,
         purge_after: bool = False,
-        ffmpeg_path: str = None,
+        ffmpeg_path: str | None = None,
     ) -> bool:
         """
         Uploads a video file to YouTube via resumable chunked upload.
         Rotates through configured projects if daily quota is reached (Method 2).
         If all projects are exhausted, safely retains the local file and enqueues for
         automatic next-day retry (Method 1).
+        Optionally adds the video to the streamer's configured playlist.
         """
         with _youtube_lock:
             # Check if any previously pending queue items can be flushed first
@@ -635,5 +774,6 @@ class YouTube:
                 user=user,
                 nickname=nickname,
                 room_id=room_id,
+                playlist=playlist,
                 purge_after=purge_after,
             )

@@ -19,6 +19,7 @@ class RecorderConfig:
     duration: int | None = None
     use_telegram: bool = False
     use_youtube: bool = False
+    playlist: str | None = None
     bitrate: str | None = None
     ffmpeg_path: str | None = None
     keep_flv: bool = False

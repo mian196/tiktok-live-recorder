@@ -65,5 +65,47 @@ python auth.py --all       # Authenticates both
 
 <br />
 
-### Restricted Country
-Telegram is banned in many countries check the full list in this [Wikepedia Artcile](https://en.wikipedia.org/wiki/Censorship_of_Telegram) 
+### Bypassing Regional Restrictions & Censorship (Telegram)
+In several countries and regions, Telegram's API endpoints and MTProto IP ranges are restricted or blocked by local ISPs and government firewalls (see the full list in the [Wikipedia Article on Censorship of Telegram](https://en.wikipedia.org/wiki/Censorship_of_Telegram)).
+
+If you are located in a restricted region, running `python auth.py --telegram` or uploading recordings will result in connection timeouts or infinite hanging on `Connecting...`.
+
+You can bypass these restrictions using any of the following methods:
+
+#### 1. System-Wide VPN (Recommended & Easiest)
+Running a system-wide VPN client is the most reliable way to route all Telegram API requests and video upload streams without modifying configurations.
+- Use a reputable VPN provider (e.g., Proton VPN, Mullvad, WireGuard, or Cloudflare WARP).
+- Connect to a server located in an unrestricted region (e.g., Europe, US, or Singapore) before running `auth.py` or starting the recorder.
+
+#### 2. Terminal / Environment Proxy
+If you use a local proxy client (e.g., V2Ray, Xray, Clash, Shadowsocks, Tor, or an SSH tunnel) that exposes a local HTTP/SOCKS5 proxy port (e.g., `127.0.0.1:10808`):
+
+- **PowerShell (Windows)**:
+  ```powershell
+  $env:HTTP_PROXY="http://127.0.0.1:10808"
+  $env:HTTPS_PROXY="http://127.0.0.1:10808"
+  $env:ALL_PROXY="socks5://127.0.0.1:10808"
+  python auth.py --telegram
+  ```
+
+- **Linux / macOS (Bash / Zsh)**:
+  ```bash
+  export HTTP_PROXY="http://127.0.0.1:10808"
+  export HTTPS_PROXY="http://127.0.0.1:10808"
+  export ALL_PROXY="socks5://127.0.0.1:10808"
+  python auth.py --telegram
+  ```
+
+- **Using Proxychains (Linux / macOS)**:
+  If your proxy client provides a SOCKS5 proxy, configure `/etc/proxychains.conf` and run:
+  ```bash
+  proxychains4 python auth.py --telegram
+  ```
+
+#### 3. Headless Server / Remote VPS Deployment
+If your residential connection or country restricts Telegram:
+1. Deploy the recorder on an overseas VPS (e.g., Hetzner, DigitalOcean, Linode, AWS) located in an unrestricted country.
+2. Alternatively, authenticate on your local machine using a temporary VPN, then transfer the generated `tiktok_live_recorder_session.session` file to your server alongside your configuration files.
+
+> [!NOTE]
+> Telegram requires an active, uninterrupted connection to upload multi-part video chunks. Using a stable VPN connection or hosting on a low-latency VPS will prevent upload failures for large live stream recordings.

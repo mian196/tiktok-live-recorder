@@ -228,3 +228,52 @@ If you are connected via SSH, forward the callback port to your local machine:
 ```bash
 ssh -L 8080:localhost:8080 user@your-server-ip
 ```
+
+
+---
+
+## Step 11: Configuring Playlists for Streamers & Groups
+
+You can automatically organize uploaded live streams into separate YouTube playlists per streamer or per group.
+
+### Supported Playlist Identification:
+- **Playlist ID**: Direct YouTube ID (e.g. `PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`).
+- **Playlist Name / Title**: You can simply write the title you want (e.g. `"Nurse Don Law Live Archive"` or `"Philippines Streams"`). If the playlist does not exist yet on your channel, **the tool will automatically create it for you**!
+
+### Option 1: Configure in `configs/youtube.json`
+```json
+{
+  "default_playlist": "All TikTok Lives",
+
+  "streamer_playlists": {
+    "nursedonlaw27": "Nurse Don Law Archive",
+    "ser.dandan": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+
+  "playlists": {
+    "Favorite Creators": ["streamer_a", "streamer_b"],
+    "Gaming Streams": ["streamer_c"]
+  }
+}
+```
+
+### Option 2: Configure in `configs/config.json`
+Inside the tracked `user` array:
+```json
+"user": [
+  {
+    "username": "nursedonlaw27",
+    "playlist": "Nurse Don Law Archive"
+  },
+  {
+    "username": "ser.dandan",
+    "playlist": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+]
+```
+
+### Option 3: Command-Line Flag (`-playlist`)
+When running manual or temporary recordings:
+```bash
+python src/main.py -user nursedonlaw27 -mode manual -duration 120 -youtube -playlist "Nurse Don Law Archive"
+```

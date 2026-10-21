@@ -1,4 +1,6 @@
+import os
 import shutil
+import tempfile
 import threading
 import time
 from http.client import HTTPException
@@ -9,17 +11,13 @@ from requests import RequestException
 
 from core.tiktok_api import TikTokAPI
 from notify.notifier import Notifier
+from utils.custom_exceptions import LiveNotFound, TikTokRecorderError, UserLiveError
+from utils.enums import Error, Mode, TikTokError, TimeOut
 from utils.logger_manager import logger
 from utils.recorder_config import RecorderConfig
 from utils.status_bar import RecordingStatusBar
-from utils.custom_exceptions import LiveNotFound, UserLiveError, TikTokRecorderError
-from utils.enums import Mode, Error, TimeOut, TikTokError
 from utils.user_identity import TrackedUser, parse_tracked_users
 from utils.utils import update_tracked_users_in_config
-
-
-import os
-import tempfile
 
 
 class _ConversionLock:
@@ -74,7 +72,7 @@ class _ConversionLock:
 _conversion_lock = _ConversionLock()
 
 
-def format_interval(minutes: float | int) -> str:
+def format_interval(minutes: float) -> str:
     """Format minutes interval into a human-friendly string (e.g. '30 seconds', '1 minute', '5 minutes')."""
     seconds = int(round(minutes * 60))
     if seconds % 60 == 0:
@@ -122,10 +120,14 @@ class TikTokRecorder:
             elif config.user:
                 self.tracked_users = parse_tracked_users(config.user)
 
+        self.playlist = getattr(config, "playlist", None)
+        self.user_playlists: dict[str, str] = {}
         self.user_nicknames: dict[str, str] = {}
         for u in self.tracked_users:
             if getattr(u, "nickname", None):
                 self.user_nicknames[u.username] = u.nickname
+            if getattr(u, "playlist", None):
+                self.user_playlists[u.username] = u.playlist
 
     def _save_tracked_users_to_config(self):
         """Persists current tracked user objects (with resolved sec_uid / user_id) to config.json."""
@@ -721,11 +723,13 @@ class TikTokRecorder:
                         except Exception:
                             pass
 
+                    target_playlist = self.playlist or self.user_playlists.get(user)
                     uploaded = YouTube().upload(
                         output_file,
                         user=user,
                         nickname=nickname or user,
                         room_id=room_id,
+                        playlist=target_playlist,
                         purge_after=purge_yt,
                         ffmpeg_path=self.ffmpeg_path,
                     )

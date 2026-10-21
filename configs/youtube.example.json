@@ -16,6 +16,15 @@
       "credentials_storage_file": "configs/youtube_token_3.json"
     }
   ],
+  "default_playlist": null,
+  "streamer_playlists": {
+    "streamer1": "PLxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "streamer2": "Streamer 2 Archive"
+  },
+  "playlists": {
+    "Gaming Streams": ["streamer3", "streamer4"],
+    "Philippines Creators": ["streamer5", "streamer6"]
+  },
   "queue_file": "configs/youtube_queue.json",
   "privacy_status": "private",
   "title_template": "{display_name} (@{username}) - TikTok Live ({date})",

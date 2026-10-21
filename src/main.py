@@ -1,7 +1,8 @@
-import sys
-import os
-import time
 import multiprocessing
+import os
+import sys
+import time
+
 from utils.enums import Mode
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -9,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def record_user(config):
     import time
+
     from core.tiktok_recorder import TikTokRecorder
     from utils.logger_manager import logger
 
@@ -65,6 +67,7 @@ def _build_config(args, mode, cookies, user=None):
         duration=args.duration,
         use_telegram=args.telegram,
         use_youtube=getattr(args, "youtube", False),
+        playlist=getattr(args, "playlist", None),
         bitrate=args.bitrate,
         ffmpeg_path=args.ffmpeg_path,
         keep_flv=args.keep_flv,
@@ -117,12 +120,12 @@ def run_recordings(args, mode, cookies):
 
 
 def main():
+    from check_updates import check_updates
     from utils.args_handler import validate_and_parse_args
-    from utils.utils import read_cookies
-    from utils.logger_manager import logger
     from utils.custom_exceptions import TikTokRecorderError
     from utils.dependencies import check_ffmpeg, check_yt_dlp
-    from check_updates import check_updates
+    from utils.logger_manager import logger
+    from utils.utils import read_cookies
 
     try:
         # validate and parse command line arguments
@@ -146,6 +149,7 @@ def main():
         def _run_background_recovery():
             try:
                 from pathlib import Path
+
                 from utils.video_management import VideoManagement
 
                 dirs_to_scan = set()
