@@ -1,7 +1,6 @@
 import json
 import os
 import socket
-import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -217,13 +216,6 @@ class YouTube:
                     logger.error(
                         f"YouTube client secrets file not found at: '{secrets_path}' for [{name}]. "
                         "Please refer to docs/YOUTUBE_SETUP.md."
-                    )
-                    return None
-
-                if not sys.stdin or not sys.stdin.isatty():
-                    logger.error(
-                        f"YouTube client [{name}] is not authorized and running without interactive TTY. "
-                        "Please authenticate once interactively to generate the token."
                     )
                     return None
 
