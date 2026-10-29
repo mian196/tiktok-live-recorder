@@ -1,4 +1,5 @@
 import socket
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -63,7 +64,7 @@ class HttpClient:
         if is_termux():
             self.req = self.req_stream
         else:
-            from curl_cffi import Session, CurlSslVersion, CurlOpt
+            from curl_cffi import CurlOpt, CurlSslVersion, Session
 
             self.req = Session(
                 impersonate="chrome136",

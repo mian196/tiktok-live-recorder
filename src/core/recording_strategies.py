@@ -21,7 +21,7 @@ class BaseRecordingStrategy:
         room_id: str,
         live_urls: list[str],
         final_output: str,
-        stop_event: Event = None,
+        stop_event: Event | None = None,
         status_bar: RecordingStatusBar = None,
     ) -> tuple[bool, str, int]:
         """
@@ -43,7 +43,7 @@ class YtDlpStrategy(BaseRecordingStrategy):
         room_id: str,
         live_urls: list[str],
         final_output: str,
-        stop_event: Event = None,
+        stop_event: Event | None = None,
         status_bar: RecordingStatusBar = None,
     ) -> tuple[bool, str, int]:
         stop_event = stop_event or Event()
@@ -308,7 +308,7 @@ class RequestsStrategy(BaseRecordingStrategy):
         room_id: str,
         live_urls: list[str],
         final_output: str,
-        stop_event: Event = None,
+        stop_event: Event | None = None,
         status_bar: RecordingStatusBar = None,
     ) -> tuple[bool, str, int]:
         stop_event = stop_event or Event()
@@ -317,8 +317,9 @@ class RequestsStrategy(BaseRecordingStrategy):
         total_bytes_written = 0
         recorded_segments = []
 
-        from requests import RequestException
         from http.client import HTTPException
+
+        from requests import RequestException
 
         for index, live_url in enumerate(live_urls, start=1):
             if stop_event.is_set():

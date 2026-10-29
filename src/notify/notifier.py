@@ -1,5 +1,6 @@
 import time
 from pathlib import Path
+
 import requests
 
 from utils.logger_manager import logger
@@ -7,12 +8,13 @@ from utils.utils import read_config
 
 
 class Notifier:
-    def __init__(self, config_override: dict = None):
+    def __init__(self, config_override: dict | None = None):
         cfg = (
             config_override
             if config_override is not None
             else read_config().get("notifications", {})
         )
+        self.config = cfg
         self.enabled = bool(cfg.get("enabled", False))
         self.discord_url = cfg.get("discord_webhook_url", "")
         self.use_telegram = bool(cfg.get("telegram", False))
@@ -31,6 +33,7 @@ class Notifier:
                 "upload_started": True,
                 "upload_finished": True,
                 "upload_failed": True,
+                "upload_blocked": True,
             },
         )
         self._last_sent: dict[str, float] = {}
@@ -84,7 +87,7 @@ class Notifier:
             interval = kwargs.get("interval", 5)
             if isinstance(interval, (int, float)):
                 if interval < 1:
-                    interval_str = f"{int(round(interval * 60))}s"
+                    interval_str = f"{round(interval * 60)}s"
                 else:
                     mins = int(interval) if int(interval) == interval else interval
                     interval_str = f"{mins} min"
@@ -128,13 +131,46 @@ class Notifier:
                 f"Successfully uploaded recording for **@{user}** to {destination}.\n**File:** `{file_name}`\n**Size:** {size_mb} MB",
                 0x2ECC71,  # Green
             )
-        elif event == "upload_failed":
+        elif event in ("upload_failed", "upload_blocked"):
             file_name = Path(kwargs.get("file", "")).name
             error = kwargs.get("error", "Unknown error")
-            destination = kwargs.get("destination", "Telegram")
+            destination = kwargs.get("destination", "Upload Target")
+
+            err_lower = str(error).lower()
+            is_blocked = event == "upload_blocked" or any(
+                kw in err_lower
+                for kw in (
+                    "token",
+                    "oauth",
+                    "unauthorized",
+                    "invalid_grant",
+                    "expired",
+                    "revoked",
+                    "session",
+                    "quota",
+                    "blocked",
+                    "re-authenticate",
+                )
+            )
+
+            if is_blocked:
+                title = f"🚫 {destination} Upload Blocked"
+                message = (
+                    f"Recording for **@{user}** was **not uploaded** to {destination}.\n\n"
+                    f"**Reason:** {error}\n"
+                    f"**File:** `{file_name}`\n\n"
+                    f"⚠️ *The recording has been safely preserved locally on the server.*"
+                )
+            else:
+                title = f"❌ {destination} Upload Failed"
+                message = (
+                    f"Failed to upload recording for **@{user}** to {destination}.\n\n"
+                    f"**Reason:** {error}\n"
+                    f"**File:** `{file_name}`"
+                )
             return (
-                "❌ Upload Failed",
-                f"Failed to upload recording for **@{user}** to {destination}.\n**File:** `{file_name}`\n**Error:** `{error}`",
+                title,
+                message,
                 0xE74C3C,  # Red
             )
         else:
@@ -160,14 +196,50 @@ class Notifier:
             logger.debug(f"Discord notification failed: {e}")
 
     def _send_telegram(self, title: str, message: str):
-        """Send a message via Telegram client."""
+        """Send a message via Telegram bot or client."""
+        # Check if Telegram Bot API is configured (HTTP POST)
+        bot_token = self.config.get("telegram_bot_token")
+        bot_chat_id = self.config.get("telegram_chat_id")
+        topic_id = self.config.get("telegram_topic_id")
+
+        if not bot_token:
+            try:
+                from utils.utils import read_telegram_config
+
+                tg_cfg = read_telegram_config()
+                bot_token = tg_cfg.get("bot_token")
+                bot_chat_id = bot_chat_id or tg_cfg.get("chat_id")
+                if topic_id is None:
+                    topic_id = tg_cfg.get("topic_id")
+            except Exception:
+                pass
+
+        if bot_token and bot_chat_id:
+            try:
+                url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                text = f"*{title}*\n\n{message}"
+                payload = {
+                    "chat_id": bot_chat_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                }
+                if topic_id is not None and str(topic_id).strip().isdigit():
+                    payload["message_thread_id"] = int(topic_id)
+                requests.post(url, json=payload, timeout=10)
+                return
+            except Exception as e:
+                logger.debug(f"Telegram Bot notification failed: {e}")
+                return
+
+        # Fallback to Telethon user client
         try:
             if not self._telegram:
                 from upload.telegram import Telegram
 
                 self._telegram = Telegram()
-            from upload.telegram import _telegram_lock
             import asyncio
+
+            from upload.telegram import _telegram_lock
 
             async def _send():
                 await self._telegram.client.connect()

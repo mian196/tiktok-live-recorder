@@ -79,7 +79,7 @@ def test_config_automatic_interval_fractional_and_seconds(tmp_path, monkeypatch)
     )
     with patch("utils.utils._get_config_path", return_value=str(cfg_file)):
         monkeypatch.setattr(sys, "argv", ["tiktok-live-recorder"])
-        args, mode = validate_and_parse_args()
+        args, _mode = validate_and_parse_args()
         assert args.automatic_interval == 0.5
 
     # Test invalid string in config

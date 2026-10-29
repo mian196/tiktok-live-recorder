@@ -2,15 +2,16 @@ import logging
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_api import TikTokAPI  # noqa: E402
-from core.tiktok_recorder import _ConversionLock  # noqa: E402
-from http_utils.http_client import HttpClient  # noqa: E402
-from utils.custom_exceptions import LiveNotFound, UserLiveError  # noqa: E402
-from utils.logger_manager import logger  # noqa: E402
+from core.tiktok_api import TikTokAPI
+from core.tiktok_recorder import _ConversionLock
+from http_utils.http_client import HttpClient
+from utils.custom_exceptions import LiveNotFound, UserLiveError
+from utils.logger_manager import logger
 
 
 def test_logger_warning_handler_level():

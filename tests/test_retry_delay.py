@@ -6,9 +6,9 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_recorder import TikTokRecorder  # noqa: E402
-from utils.enums import Mode  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
+from core.tiktok_recorder import TikTokRecorder
+from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
 
 
 def test_retry_delay_used_on_reconnection(tmp_path):

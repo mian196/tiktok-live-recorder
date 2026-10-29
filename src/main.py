@@ -186,7 +186,7 @@ def main():
         if args.update_check is True:
             logger.info("Checking for updates...\n")
             if check_updates():
-                exit()
+                sys.exit()
         else:
             logger.info("Skipped update check\n")
 

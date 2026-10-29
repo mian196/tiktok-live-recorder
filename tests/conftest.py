@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+
 import pytest
 
 
@@ -42,7 +43,7 @@ def isolate_cli_tests(request, monkeypatch):
         "test_config" not in request.node.nodeid
         and "test_user_identity" not in request.node.nodeid
     ):
-        monkeypatch.setattr("utils.utils.read_config", lambda: {})
+        monkeypatch.setattr("utils.utils.read_config", dict)
 
 
 @pytest.fixture(autouse=True)

@@ -1,6 +1,6 @@
+import platform
 import subprocess
 import sys
-import platform
 from subprocess import SubprocessError
 
 from .logger_manager import logger
@@ -51,7 +51,7 @@ def install_ffmpeg_binary():
     except Exception as e:
         logger.error(f"Error: {e}")
 
-    exit(1)
+    sys.exit(1)
 
 
 def check_distro_library():
@@ -148,10 +148,10 @@ def install_requirements():
             logger.info("Requirements installed successfully via pip\n")
         except Exception as e:
             logger.error(f"Failed to install requirements: {e}")
-            exit(1)
+            sys.exit(1)
     except SubprocessError as e:
         logger.error(f"Error: {e}")
-        exit(1)
+        sys.exit(1)
 
 
 def check_and_install_dependencies():
@@ -194,4 +194,4 @@ def check_yt_dlp(yt_dlp_path="yt-dlp"):
         logger.error(
             "Please install yt-dlp via winget install yt-dlp / pip install yt-dlp or visit: https://github.com/yt-dlp/yt-dlp"
         )
-        exit(1)
+        sys.exit(1)

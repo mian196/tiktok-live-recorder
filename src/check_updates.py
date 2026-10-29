@@ -1,9 +1,10 @@
 import json
 import os
-from pathlib import Path
-import requests
-import zipfile
 import shutil
+import zipfile
+from pathlib import Path
+
+import requests
 
 URL = "https://raw.githubusercontent.com/Michele0303/tiktok-live-recorder/main/src/utils/enums.py"
 URL_REPO = (
@@ -83,8 +84,7 @@ def download_file(url: str, file_name: str) -> None:
 
     if response.status_code == 200:
         with open(file_name, "wb") as file:
-            for chunk in response.iter_content(1024):
-                file.write(chunk)
+            file.writelines(response.iter_content(1024))
     else:
         print("Error downloading the file.")
 
@@ -105,6 +105,7 @@ def check_updates() -> bool:
 
     try:
         from enums_temp import Info
+
         from utils.enums import Info as InfoOld
     except ImportError:
         print("Error importing the file or missing module.")

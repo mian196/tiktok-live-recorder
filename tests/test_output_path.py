@@ -3,9 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_recorder import TikTokRecorder  # noqa: E402
-from utils.enums import Mode  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
+from core.tiktok_recorder import TikTokRecorder
+from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
 
 
 def test_build_output_path_creates_user_subdirectory(tmp_path):

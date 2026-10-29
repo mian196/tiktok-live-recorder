@@ -43,8 +43,7 @@ def test_parallel_multi_recording_records_all_live_users(monkeypatch):
         nonlocal max_concurrent
         with lock:
             concurrent_active.append(user)
-            if len(concurrent_active) > max_concurrent:
-                max_concurrent = len(concurrent_active)
+            max_concurrent = max(max_concurrent, len(concurrent_active))
         # Hold thread active until gate is opened or timeout
         gate.wait(timeout=1.0)
         with lock:

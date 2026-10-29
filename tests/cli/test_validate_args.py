@@ -2,7 +2,6 @@ import sys
 
 import pytest
 
-
 from utils.args_handler import validate_and_parse_args
 from utils.custom_exceptions import ArgsParseError
 from utils.enums import Mode

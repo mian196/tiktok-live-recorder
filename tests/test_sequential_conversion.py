@@ -6,9 +6,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_recorder import TikTokRecorder  # noqa: E402
-from utils.enums import Mode  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
+from core.tiktok_recorder import TikTokRecorder
+from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
 
 
 def test_conversion_lock_prevents_concurrent_conversions(tmp_path):
@@ -45,8 +45,7 @@ def test_conversion_lock_prevents_concurrent_conversions(tmp_path):
         nonlocal concurrent_runs, max_concurrent
         with run_lock:
             concurrent_runs += 1
-            if concurrent_runs > max_concurrent:
-                max_concurrent = concurrent_runs
+            max_concurrent = max(max_concurrent, concurrent_runs)
         time.sleep(0.05)
         with run_lock:
             concurrent_runs -= 1

@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from utils.utils import read_config
 
@@ -9,16 +9,12 @@ _OVERRIDE_DISPLAY_NAME = None
 
 def _get_new_york_timezone() -> tuple[timezone, str]:
     """Returns New York timezone taking Daylight Saving Time (EDT vs EST) into account."""
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     year = now_utc.year
-    march_first = datetime(year, 3, 1, tzinfo=timezone.utc)
-    dst_start = datetime(
-        year, 3, 8 + (6 - march_first.weekday()) % 7, 2, tzinfo=timezone.utc
-    )
-    nov_first = datetime(year, 11, 1, tzinfo=timezone.utc)
-    dst_end = datetime(
-        year, 11, 1 + (6 - nov_first.weekday()) % 7, 2, tzinfo=timezone.utc
-    )
+    march_first = datetime(year, 3, 1, tzinfo=UTC)
+    dst_start = datetime(year, 3, 8 + (6 - march_first.weekday()) % 7, 2, tzinfo=UTC)
+    nov_first = datetime(year, 11, 1, tzinfo=UTC)
+    dst_end = datetime(year, 11, 1 + (6 - nov_first.weekday()) % 7, 2, tzinfo=UTC)
 
     if dst_start <= now_utc < dst_end:
         return timezone(timedelta(hours=-4)), "UTC-04:00 (EDT)"
@@ -26,7 +22,7 @@ def _get_new_york_timezone() -> tuple[timezone, str]:
         return timezone(timedelta(hours=-5)), "UTC-05:00 (EST)"
 
 
-def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
+def parse_timezone(val: str | float | None) -> tuple[timezone, str]:
     """
     Parses a timezone configuration into a datetime.tzinfo object and a human-readable display string.
     Supports formats like:
@@ -54,8 +50,8 @@ def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
     aliases = {
         "est": (timezone(timedelta(hours=-5)), "UTC-05:00 (EST)"),
         "edt": (timezone(timedelta(hours=-4)), "UTC-04:00 (EDT)"),
-        "utc": (timezone.utc, "UTC"),
-        "gmt": (timezone.utc, "GMT"),
+        "utc": (UTC, "UTC"),
+        "gmt": (UTC, "GMT"),
     }
     if val_str.lower() in aliases:
         return aliases[val_str.lower()]
@@ -90,7 +86,7 @@ def parse_timezone(val: str | int | float | None) -> tuple[timezone, str]:
     return _get_new_york_timezone()
 
 
-def set_configured_timezone(tz_value: str | int | float | None):
+def set_configured_timezone(tz_value: str | float | None):
     """Sets a global runtime override for the configured timezone."""
     global _OVERRIDE_TIMEZONE, _OVERRIDE_DISPLAY_NAME
     if tz_value is None:
@@ -123,7 +119,7 @@ def get_timezone_display_name() -> str:
 def get_configured_now() -> datetime:
     """Returns current datetime in the configured timezone."""
     tz = get_configured_timezone()
-    return datetime.now(timezone.utc).astimezone(tz)
+    return datetime.now(UTC).astimezone(tz)
 
 
 def format_configured_time(
@@ -132,9 +128,9 @@ def format_configured_time(
     """Formats a timestamp (or current time) using the configured timezone."""
     tz = get_configured_timezone()
     if timestamp is not None:
-        dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).astimezone(tz)
+        dt = datetime.fromtimestamp(timestamp, tz=UTC).astimezone(tz)
     else:
-        dt = datetime.now(timezone.utc).astimezone(tz)
+        dt = datetime.now(UTC).astimezone(tz)
     return dt.strftime(fmt)
 
 
@@ -146,7 +142,7 @@ def get_logging_time_converter():
 
     def converter(secs):
         tz = get_configured_timezone()
-        dt = datetime.fromtimestamp(secs, tz=timezone.utc).astimezone(tz)
+        dt = datetime.fromtimestamp(secs, tz=UTC).astimezone(tz)
         return dt.timetuple()
 
     return converter

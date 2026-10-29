@@ -200,7 +200,9 @@ class VideoManagement:
 
     @staticmethod
     def validate_video_integrity(
-        file_path: str, ffmpeg_path: str = None, min_expected_duration: float = None
+        file_path: str,
+        ffmpeg_path: str | None = None,
+        min_expected_duration: float | None = None,
     ) -> bool:
         """
         Validate that the converted MP4 file exists, has data,
@@ -310,7 +312,7 @@ class VideoManagement:
     def fast_split_video(
         file_path: str,
         max_bytes: int = 1950 * 1024 * 1024,
-        ffmpeg_path: str = None,
+        ffmpeg_path: str | None = None,
     ) -> list[str]:
         """
         Splits a video file into parts under max_bytes using fast ffmpeg stream copy (-c copy)
@@ -397,8 +399,8 @@ class VideoManagement:
     def convert_segments_to_mp4(
         segment_files: list[str],
         output_file: str,
-        bitrate: str = None,
-        ffmpeg_path: str = None,
+        bitrate: str | None = None,
+        ffmpeg_path: str | None = None,
         keep_flv: bool = False,
         move_to_recycle_bin: bool = True,
     ) -> bool:
@@ -775,8 +777,8 @@ class VideoManagement:
     @staticmethod
     def sanitize_mp4_timestamps(
         input_file: str,
-        output_file: str = None,
-        ffmpeg_path: str = None,
+        output_file: str | None = None,
+        ffmpeg_path: str | None = None,
     ) -> bool:
         """
         Run a quick FFmpeg pass (-c copy -movflags +faststart) on an interrupted
@@ -818,9 +820,7 @@ class VideoManagement:
         ]
 
         try:
-            proc = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
+            proc = subprocess.run(cmd, capture_output=True, text=True)
             if (
                 proc.returncode == 0
                 and out_path.exists()
@@ -843,8 +843,8 @@ class VideoManagement:
     @staticmethod
     def recover_interrupted_recordings(
         output_dir: str,
-        ffmpeg_path: str = None,
-        max_mtime: float = None,
+        ffmpeg_path: str | None = None,
+        max_mtime: float | None = None,
         keep_flv: bool = False,
         move_to_recycle_bin: bool = True,
     ) -> int:

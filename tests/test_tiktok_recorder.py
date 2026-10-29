@@ -5,10 +5,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_recorder import TikTokRecorder  # noqa: E402
-from utils.custom_exceptions import TikTokRecorderError  # noqa: E402
-from utils.enums import Mode  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
+from core.tiktok_recorder import TikTokRecorder
+from utils.custom_exceptions import TikTokRecorderError
+from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
 
 
 class FakeTikTokAPI:
@@ -101,6 +101,7 @@ def test_setup_keeps_manual_room_id_allowed_when_country_check_is_blocked():
 
 def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
     from unittest.mock import patch
+
     import requests
 
     recorder = TikTokRecorder(
@@ -145,8 +146,8 @@ def test_start_recording_handles_reconnection_and_passes_segments(tmp_path):
         (
             segments_arg,
             output_arg,
-            bitrate_arg,
-            ffmpeg_arg,
+            _bitrate_arg,
+            _ffmpeg_arg,
             keep_flv_arg,
             move_to_recycle_bin_arg,
         ) = mock_convert.call_args[0]
@@ -203,6 +204,7 @@ def test_automatic_mode_multi_checks_all_users():
 
 def test_start_recording_survives_vpn_toggle_and_resets_session(tmp_path):
     from unittest.mock import patch
+
     import requests
 
     recorder = TikTokRecorder(
@@ -322,9 +324,10 @@ def test_automatic_mode_multi_spawns_simultaneous_threads(monkeypatch):
 
 def test_start_recording_dispatches_upload_notifications(tmp_path, monkeypatch):
     from unittest.mock import MagicMock
+
     from core.tiktok_recorder import TikTokRecorder
-    from utils.recorder_config import RecorderConfig
     from utils.enums import Mode
+    from utils.recorder_config import RecorderConfig
 
     recorder = TikTokRecorder(
         RecorderConfig(
@@ -368,9 +371,10 @@ def test_start_recording_dispatches_upload_notifications(tmp_path, monkeypatch):
 
 def test_automatic_mode_quiet_when_not_live():
     from unittest.mock import patch
+
     from core.tiktok_recorder import TikTokRecorder
-    from utils.recorder_config import RecorderConfig
     from utils.enums import Mode
+    from utils.recorder_config import RecorderConfig
 
     recorder = TikTokRecorder(
         RecorderConfig(
@@ -394,15 +398,17 @@ def test_automatic_mode_quiet_when_not_live():
     recorder.tiktok = FakeOfflineAPI()
 
     logs = []
-    with patch(
-        "core.tiktok_recorder.logger.info",
-        side_effect=lambda msg, *a, **kw: logs.append(str(msg)),
+    with (
+        patch(
+            "core.tiktok_recorder.logger.info",
+            side_effect=lambda msg, *a, **kw: logs.append(str(msg)),
+        ),
+        patch("time.sleep", side_effect=KeyboardInterrupt),
     ):
-        with patch("time.sleep", side_effect=KeyboardInterrupt):
-            try:
-                recorder.automatic_mode()
-            except KeyboardInterrupt:
-                pass
+        try:
+            recorder.automatic_mode()
+        except KeyboardInterrupt:
+            pass
 
     # Should log the initial startup banner, but NOT repetitive "is not live" or "Waiting ... before recheck"
     assert any("Watching @quiet_user" in log for log in logs)
@@ -412,10 +418,11 @@ def test_automatic_mode_quiet_when_not_live():
 
 def test_automatic_mode_logs_when_check_fails():
     from unittest.mock import patch
+
     from core.tiktok_recorder import TikTokRecorder
-    from utils.recorder_config import RecorderConfig
-    from utils.enums import Mode
     from utils.custom_exceptions import UserLiveError
+    from utils.enums import Mode
+    from utils.recorder_config import RecorderConfig
 
     recorder = TikTokRecorder(
         RecorderConfig(
@@ -439,15 +446,17 @@ def test_automatic_mode_logs_when_check_fails():
     recorder.tiktok = FakeErrorAPI()
 
     warning_logs = []
-    with patch(
-        "core.tiktok_recorder.logger.warning",
-        side_effect=lambda msg, *a, **kw: warning_logs.append(str(msg)),
+    with (
+        patch(
+            "core.tiktok_recorder.logger.warning",
+            side_effect=lambda msg, *a, **kw: warning_logs.append(str(msg)),
+        ),
+        patch("time.sleep", side_effect=KeyboardInterrupt),
     ):
-        with patch("time.sleep", side_effect=KeyboardInterrupt):
-            try:
-                recorder.automatic_mode()
-            except KeyboardInterrupt:
-                pass
+        try:
+            recorder.automatic_mode()
+        except KeyboardInterrupt:
+            pass
 
     # When a check actually fails, it must be logged as a warning
     assert any(

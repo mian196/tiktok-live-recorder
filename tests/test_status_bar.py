@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from utils.status_bar import (  # noqa: E402
+from utils.status_bar import (
     RecordingStatusBar,
     _format_duration,
     _format_size,

@@ -4,14 +4,14 @@ import re
 import time
 
 from http_utils.http_client import HttpClient
-from utils.enums import StatusCode, TikTokError
-from utils.logger_manager import logger
 from utils.custom_exceptions import (
-    UserLiveError,
-    TikTokRecorderError,
     LiveNotFound,
     TikRecUnavailableError,
+    TikTokRecorderError,
+    UserLiveError,
 )
+from utils.enums import StatusCode, TikTokError
+from utils.logger_manager import logger
 
 
 class TikTokAPI:
@@ -479,7 +479,7 @@ class TikTokAPI:
         if url and url not in candidates:
             candidates.append(url)
 
-    def get_live_urls(self, room_id: str, user: str = None) -> list[str]:
+    def get_live_urls(self, room_id: str, user: str | None = None) -> list[str]:
         """
         Return candidate CDN URLs (flv or m3u8) for the streaming.
         If the API returns status code 4003110 and a username is provided,
@@ -561,14 +561,16 @@ class TikTokAPI:
 
         return candidates
 
-    def get_live_url(self, room_id: str, user: str = None) -> str | None:
+    def get_live_url(self, room_id: str, user: str | None = None) -> str | None:
         """Return the first candidate CDN URL for the streaming."""
         live_urls = self.get_live_urls(room_id, user=user)
         if live_urls:
             return live_urls[0]
         return None
 
-    def get_live_url_candidates(self, room_id: str, user: str = None) -> list[str]:
+    def get_live_url_candidates(
+        self, room_id: str, user: str | None = None
+    ) -> list[str]:
         """Return candidate CDN URLs for the streaming."""
         return self.get_live_urls(room_id, user=user)
 

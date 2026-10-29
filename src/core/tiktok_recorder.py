@@ -74,9 +74,9 @@ _conversion_lock = _ConversionLock()
 
 def format_interval(minutes: float) -> str:
     """Format minutes interval into a human-friendly string (e.g. '30 seconds', '1 minute', '5 minutes')."""
-    seconds = int(round(minutes * 60))
+    seconds = round(minutes * 60)
     if seconds % 60 == 0:
-        mins = int(round(minutes))
+        mins = round(minutes)
         return f"{mins} minute{'s' if mins != 1 else ''}"
     if seconds < 60:
         return f"{seconds} second{'s' if seconds != 1 else ''}"
@@ -317,7 +317,7 @@ class TikTokRecorder:
         elif self.mode == Mode.FOLLOWERS:
             self.followers_mode()
 
-    def _check_disk_space(self, user: str = None) -> bool:
+    def _check_disk_space(self, user: str | None = None) -> bool:
         """Return True if disk has enough space, False if below threshold."""
         if self.disk_space_alert_gb <= 0:
             return True
@@ -671,7 +671,8 @@ class TikTokRecorder:
                     from upload.telegram import Telegram
 
                     purge_telegram = self.purge_after_upload and not self.use_youtube
-                    uploaded = Telegram().upload(
+                    tg = Telegram()
+                    uploaded = tg.upload(
                         output_file,
                         purge_after=purge_telegram,
                         ffmpeg_path=self.ffmpeg_path,
@@ -687,11 +688,14 @@ class TikTokRecorder:
                             destination="Telegram",
                         )
                     else:
+                        error_msg = (
+                            getattr(tg, "last_error", None) or "Upload did not complete"
+                        )
                         self.notify.notify(
                             "upload_failed",
                             user=user,
                             file=output_file,
-                            error="Upload did not complete",
+                            error=error_msg,
                             destination="Telegram",
                         )
                 except Exception as e:
@@ -729,7 +733,8 @@ class TikTokRecorder:
                             pass
 
                     target_playlist = self.playlist or self.user_playlists.get(user)
-                    uploaded = YouTube().upload(
+                    yt = YouTube()
+                    uploaded = yt.upload(
                         output_file,
                         user=user,
                         nickname=nickname or user,
@@ -748,11 +753,14 @@ class TikTokRecorder:
                             destination="YouTube",
                         )
                     else:
+                        error_msg = (
+                            getattr(yt, "last_error", None) or "Upload did not complete"
+                        )
                         self.notify.notify(
                             "upload_failed",
                             user=user,
                             file=output_file,
-                            error="Upload did not complete",
+                            error=error_msg,
                             destination="YouTube",
                         )
                 except Exception as e:

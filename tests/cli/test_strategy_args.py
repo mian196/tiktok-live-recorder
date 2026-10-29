@@ -1,5 +1,6 @@
 import sys
 from unittest.mock import patch
+
 import pytest
 
 from utils.args_handler import validate_and_parse_args
@@ -9,7 +10,7 @@ def test_strategy_default_requests(monkeypatch):
     monkeypatch.setattr(
         sys, "argv", ["tiktok-live-recorder", "-mode", "manual", "-user", "test"]
     )
-    args, mode = validate_and_parse_args()
+    args, _mode = validate_and_parse_args()
     assert args.recording_strategy == "requests"
 
 
@@ -27,7 +28,7 @@ def test_strategy_cli_flv_alias(monkeypatch):
             "flv",
         ],
     )
-    args, mode = validate_and_parse_args()
+    args, _mode = validate_and_parse_args()
     assert args.recording_strategy == "requests"
 
 
@@ -64,7 +65,7 @@ def test_strategy_config_ffmpeg_fallback(monkeypatch):
     with patch(
         "utils.utils.read_config", return_value={"recording_strategy": "ffmpeg"}
     ):
-        args, mode = validate_and_parse_args()
+        args, _mode = validate_and_parse_args()
         assert args.recording_strategy == "requests"
 
 
@@ -84,7 +85,7 @@ def test_strategy_cli_ytdlp(monkeypatch):
             "C:/bin/yt-dlp.exe",
         ],
     )
-    args, mode = validate_and_parse_args()
+    args, _mode = validate_and_parse_args()
     assert args.recording_strategy == "yt-dlp"
     assert args.yt_dlp_path == "C:/bin/yt-dlp.exe"
 

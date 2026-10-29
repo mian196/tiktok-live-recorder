@@ -100,7 +100,7 @@ def update_tracked_users_in_config(tracked_users: list) -> bool:
     Updates the 'user' / 'users' field in config.json by merging / upserting TrackedUser dicts
     so existing users in config.json are never deleted.
     """
-    from utils.user_identity import parse_tracked_users, TrackedUser
+    from utils.user_identity import TrackedUser, parse_tracked_users
 
     cfg = read_config()
     if not cfg:
@@ -162,8 +162,9 @@ def is_termux() -> bool:
     Returns:
         bool: True if running in Termux, False otherwise.
     """
-    import distro
     import platform
+
+    import distro
 
     return platform.system().lower() == "linux" and distro.like() == ""
 

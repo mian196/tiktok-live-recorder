@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from utils.logger_manager import (  # noqa: E402
+from utils.logger_manager import (
     LoggerManager,
     MidnightRotatingFileHandler,
     logger,
@@ -37,7 +37,7 @@ def test_cleanup_old_logs_max_10_files(tmp_path):
     # Call cleanup keeping max 10
     LoggerManager.cleanup_old_logs(log_dir, max_files=10)
 
-    remaining = sorted(list(log_dir.glob("tiktok-recorder*.log")))
+    remaining = sorted(log_dir.glob("tiktok-recorder*.log"))
     assert len(remaining) == 9  # 9 existing kept so 1 new file makes 10 total
 
 

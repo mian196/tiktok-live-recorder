@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 import socket
@@ -179,14 +180,16 @@ class YouTube:
         self.default_playlist = cfg.get("default_playlist")
         self.streamer_playlists = cfg.get("streamer_playlists", {})
         self.grouped_playlists = cfg.get("playlists", {})
+        self.last_error: str | None = None
 
     def _get_authenticated_service_for_project(self, project: dict):
         """Authenticate and return the YouTube v3 service instance for a specific project configuration."""
         if not HAS_GOOGLE_API:
-            logger.error(
+            self.last_error = (
                 "Google API libraries are not installed. "
                 "Please run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2"
             )
+            logger.error(self.last_error)
             return None
 
         creds = None
@@ -211,6 +214,16 @@ class YouTube:
                     )
                     creds.refresh(Request())
                 except Exception as e:
+                    err_str = str(e).lower()
+                    if "invalid_grant" in err_str or "expired or revoked" in err_str:
+                        self.last_error = (
+                            f"YouTube OAuth token for [{name}] has expired or was revoked. "
+                            "Please re-authenticate using 'python auth.py --youtube'."
+                        )
+                    else:
+                        self.last_error = (
+                            f"Could not refresh YouTube OAuth token for [{name}]: {e}"
+                        )
                     logger.warning(
                         f"Could not refresh YouTube OAuth token for [{name}]: {e}. Re-authenticating."
                     )
@@ -218,21 +231,36 @@ class YouTube:
 
             if not creds or not creds.valid:
                 if not os.path.exists(secrets_path):
-                    logger.error(
+                    self.last_error = (
                         f"YouTube client secrets file not found at: '{secrets_path}' for [{name}]. "
                         "Please refer to docs/YOUTUBE_SETUP.md."
                     )
+                    logger.error(self.last_error)
                     return None
 
-                logger.info(
-                    f"Launching browser for YouTube OAuth2 authentication for [{name}]..."
-                )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    secrets_path, scopes=SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+                # In non-interactive or headless environments, avoid blocking/hanging on browser flow
+                if (
+                    not sys.stdin
+                    or not sys.stdin.isatty()
+                    or os.environ.get("HEADLESS")
+                ):
+                    if not self.last_error:
+                        self.last_error = (
+                            f"YouTube OAuth authorization required for [{name}] but running non-interactively. "
+                            "Please run 'python auth.py --youtube' to authenticate."
+                        )
+                    logger.error(self.last_error)
+                    return None
 
                 try:
+                    logger.info(
+                        f"Launching browser for YouTube OAuth2 authentication for [{name}]..."
+                    )
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        secrets_path, scopes=SCOPES
+                    )
+                    creds = flow.run_local_server(port=0)
+
                     os.makedirs(
                         os.path.dirname(os.path.abspath(storage_path)), exist_ok=True
                     )
@@ -243,13 +271,18 @@ class YouTube:
                     logger.info(
                         f"YouTube credentials saved to {storage_path} for [{name}]"
                     )
-                except Exception as e:
-                    logger.warning(f"Could not save YouTube credentials to disk: {e}")
+                except Exception as auth_e:
+                    self.last_error = (
+                        f"YouTube OAuth authorization failed for [{name}]: {auth_e}"
+                    )
+                    logger.error(self.last_error)
+                    return None
 
         try:
             return build("youtube", "v3", credentials=creds)
         except Exception as e:
-            logger.error(f"Failed to build YouTube service for [{name}]: {e}")
+            self.last_error = f"Failed to build YouTube service for [{name}]: {e}"
+            logger.error(self.last_error)
             return None
 
     def _get_authenticated_service(self):
@@ -618,6 +651,9 @@ class YouTube:
         # Iterate through configured projects (Method 2)
         total_projects = len(self.projects)
         all_quota_exhausted = True
+        auth_failures = 0
+        quota_failures = 0
+        last_auth_error = None
 
         for idx, project in enumerate(self.projects):
             p_name = project["name"]
@@ -639,6 +675,9 @@ class YouTube:
                 logger.warning(
                     f"Could not initialize service for project [{p_name}]. Trying next project..."
                 )
+                auth_failures += 1
+                if self.last_error:
+                    last_auth_error = self.last_error
                 continue
 
             media = None
@@ -674,6 +713,7 @@ class YouTube:
                                 f"Daily YouTube API quota reached on project [{p_name}] ({idx + 1}/{total_projects})."
                             )
                             self._exhausted_projects[idx] = get_next_pacific_midnight()
+                            quota_failures += 1
                             break  # Break inner loop to rotate to the next project
                         elif e.resp.status in RETRYABLE_STATUS_CODES:
                             retry += 1
@@ -753,12 +793,22 @@ class YouTube:
                     except Exception:
                         pass
 
-        # If upload reached here, all available projects were tried
-        if all_quota_exhausted and not is_queued_retry:
-            logger.warning(
-                f"All {total_projects} configured YouTube project(s) have exhausted their daily quota. "
-                "Enqueuing video for next-day automatic retry after midnight Pacific Time (00:00 PT reset)."
+        # Check why all available projects failed
+        if auth_failures == total_projects and last_auth_error:
+            self.last_error = last_auth_error
+            logger.error(
+                f"YouTube upload blocked: {self.last_error}. Retaining local file '{source_path.name}'."
             )
+            return False
+
+        if (
+            all_quota_exhausted or quota_failures == total_projects
+        ) and not is_queued_retry:
+            self.last_error = (
+                f"All {total_projects} configured YouTube project(s) have exhausted their daily quota. "
+                "Enqueued for automatic retry after midnight Pacific Time (00:00 PT reset)."
+            )
+            logger.warning(self.last_error)
             self.enqueue_file(
                 file_path=str(source_path),
                 user=user,
@@ -771,6 +821,10 @@ class YouTube:
             logger.info(
                 f"Local recording '{source_path.name}' is safely retained until upload completes."
             )
+            return False
+
+        if not self.last_error:
+            self.last_error = "YouTube upload did not complete."
 
         return False
 
@@ -802,3 +856,50 @@ class YouTube:
                 playlist=playlist,
                 purge_after=purge_after,
             )
+
+
+if __name__ == "__main__":
+    import argparse
+
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
+
+    parser = argparse.ArgumentParser(
+        description="Upload recordings to YouTube or process pending retry queue."
+    )
+    parser.add_argument("--file", "-f", help="Path to video file to upload")
+    parser.add_argument("--user", "-u", default="", help="Streamer TikTok username")
+    parser.add_argument(
+        "--nickname", "-n", default="", help="Streamer display nickname"
+    )
+    parser.add_argument(
+        "--playlist", "-p", default=None, help="Target YouTube playlist ID or Name"
+    )
+    parser.add_argument(
+        "--queue", "-q", action="store_true", help="Process pending upload queue"
+    )
+    parser.add_argument(
+        "--purge", action="store_true", help="Delete local file after upload"
+    )
+
+    cli_args = parser.parse_args()
+    yt_cli = YouTube()
+
+    if cli_args.queue or not cli_args.file:
+        count = yt_cli.process_queue()
+        if not cli_args.file:
+            print(f"Processed retry queue: {count} video(s) uploaded successfully.")
+            sys.exit(0)
+
+    if cli_args.file:
+        res = yt_cli.upload(
+            file_path=cli_args.file,
+            user=cli_args.user,
+            nickname=cli_args.nickname,
+            playlist=cli_args.playlist,
+            purge_after=cli_args.purge,
+        )
+        if not res and yt_cli.last_error:
+            print(f"[!] Upload blocked / failed: {yt_cli.last_error}")
+        sys.exit(0 if res else 1)

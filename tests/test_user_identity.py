@@ -3,14 +3,13 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_recorder import TikTokRecorder  # noqa: E402
-from utils.enums import Mode  # noqa: E402
-from utils.recorder_config import RecorderConfig  # noqa: E402
-from utils.user_identity import TrackedUser, parse_tracked_users  # noqa: E402
-from utils.utils import update_tracked_users_in_config  # noqa: E402
+from core.tiktok_recorder import TikTokRecorder
+from utils.enums import Mode
+from utils.recorder_config import RecorderConfig
+from utils.user_identity import TrackedUser, parse_tracked_users
+from utils.utils import update_tracked_users_in_config
 
 
 def test_parse_tracked_users_formats():

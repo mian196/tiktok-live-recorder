@@ -30,10 +30,11 @@ def authenticate_youtube():
     print("=" * 60)
 
     try:
-        from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
-        from upload.youtube import YouTube, SCOPES
+
+        from upload.youtube import SCOPES, YouTube
     except ImportError:
         print("[!] Error: Google API packages not installed.")
         print(

@@ -6,8 +6,7 @@ from pathlib import Path
 from telethon import TelegramClient
 
 from utils.logger_manager import logger
-from utils.utils import read_telegram_config, read_config
-
+from utils.utils import read_config, read_telegram_config
 
 FREE_USER_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
 PREMIUM_USER_MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024
@@ -46,6 +45,7 @@ class Telegram:
             api_id=self.api_id,
             api_hash=self.api_hash,
         )
+        self.last_error: str | None = None
 
     async def _resolve_entity(self, entity):
         """Resolve entity, fetching dialogs if not yet cached in the session."""
@@ -59,7 +59,7 @@ class Telegram:
                 return entity
 
     def upload(
-        self, file_path: str, purge_after: bool = False, ffmpeg_path: str = None
+        self, file_path: str, purge_after: bool = False, ffmpeg_path: str | None = None
     ) -> bool:
         """
         Upload a file to Telegram (Saved Messages or configured chat_id) via Telethon.
@@ -101,11 +101,12 @@ class Telegram:
                 await self.client.connect()
 
                 if not await self.client.is_user_authorized():
+                    self.last_error = (
+                        "Telegram session is unauthorized or expired. "
+                        "Please re-authenticate using 'python auth.py --telegram'."
+                    )
                     if not sys.stdin or not sys.stdin.isatty():
-                        logger.error(
-                            "Telegram client is not authorized and running without interactive TTY. "
-                            "Please run interactively to authenticate."
-                        )
+                        logger.error(self.last_error)
                         return False
                     await self.client.start()
 
@@ -156,10 +157,11 @@ class Telegram:
                     )
                     was_split = len(files_to_upload) > 1
                 elif not split_enabled and file_size > max_allowed:
-                    logger.warning(
-                        f"File size ({round(file_size / (1024 * 1024))} MB) exceeds Telegram max size "
+                    self.last_error = (
+                        f"File size ({round(file_size / (1024 * 1024))} MB) exceeds Telegram limit "
                         f"({round(max_allowed / (1024 * 1024))} MB) and split_video is disabled."
                     )
+                    logger.warning(self.last_error)
                     return False
 
                 total_parts = len(files_to_upload)
@@ -195,6 +197,7 @@ class Telegram:
                 return True
 
             except Exception as e:
+                self.last_error = f"Telegram upload error: {e}"
                 logger.error(f"Error during Telegram upload: {e}\n", exc_info=True)
                 return False
 

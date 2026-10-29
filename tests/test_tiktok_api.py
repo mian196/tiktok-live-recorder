@@ -5,8 +5,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.tiktok_api import TikTokAPI  # noqa: E402
-from utils.custom_exceptions import UserLiveError  # noqa: E402
+from core.tiktok_api import TikTokAPI
+from utils.custom_exceptions import UserLiveError
 
 
 class FakeResponse:

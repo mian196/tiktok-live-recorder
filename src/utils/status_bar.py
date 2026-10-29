@@ -175,7 +175,7 @@ class RecordingStatusBar:
         RecordingStatusBar._active_bars[f"{self.user}_{id(self)}"] = self
         self._sync_to_file(0)
 
-    def update(self, total_bytes: int, part: int = None):
+    def update(self, total_bytes: int, part: int | None = None):
         if not self._is_active:
             self.start()
 
@@ -405,7 +405,7 @@ class RecordingStatusBar:
             else:
                 RecordingStatusBar._erase_rendered_lines()
 
-    def finish(self, message: str = None):
+    def finish(self, message: str | None = None):
         """End status bar and optionally print a message."""
         self.clear()
         if message:

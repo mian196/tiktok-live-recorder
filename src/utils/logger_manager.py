@@ -111,7 +111,7 @@ class LoggerManager:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(LoggerManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance.logger = None
             cls._instance.setup_logger()
         return cls._instance
@@ -123,8 +123,8 @@ class LoggerManager:
 
             fmt_datefmt = "%Y-%m-%d %H:%M:%S"
             from utils.timezone_manager import (
-                get_logging_time_converter,
                 format_configured_time,
+                get_logging_time_converter,
             )
 
             time_conv = get_logging_time_converter()

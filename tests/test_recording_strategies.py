@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-
 from core.recording_strategies import (
     RequestsStrategy,
     YtDlpStrategy,
@@ -67,7 +66,7 @@ def test_ytdlp_strategy_command_execution(tmp_path):
             pass
 
     with patch("subprocess.Popen", side_effect=FakeYtProc):
-        success, path, total_bytes = strategy.record(
+        success, _path, total_bytes = strategy.record(
             user="creator",
             room_id="777",
             live_urls=["https://cdn/live.m3u8"],
@@ -100,8 +99,7 @@ def test_requests_strategy_ctrl_c_graceful_stop_and_convert(tmp_path):
     chunks = [b"FLV_HEADER", b"DATA" * 1500]
 
     def mock_stream(url):
-        for c in chunks:
-            yield c
+        yield from chunks
         raise KeyboardInterrupt("Simulated Ctrl-C")
 
     rec.tiktok.download_live_stream = mock_stream
@@ -111,7 +109,7 @@ def test_requests_strategy_ctrl_c_graceful_stop_and_convert(tmp_path):
         "utils.video_management.VideoManagement.convert_segments_to_mp4",
         return_value=True,
     ) as mock_conv:
-        success, path, total_bytes = strategy.record(
+        success, _path, total_bytes = strategy.record(
             user="creator",
             room_id="888",
             live_urls=["https://cdn/live.flv"],
@@ -152,7 +150,7 @@ def test_ytdlp_strategy_ctrl_c_graceful_stop(tmp_path):
             "utils.video_management.VideoManagement.sanitize_mp4_timestamps"
         ) as mock_san,
     ):
-        success, path, total_bytes = strategy.record(
+        success, _path, total_bytes = strategy.record(
             user="creator",
             room_id="999",
             live_urls=["https://cdn/live.m3u8"],

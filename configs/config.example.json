@@ -31,7 +31,7 @@
   "notifications": {
     "enabled": false,
     "discord_webhook_url": "",
-    "telegram": false,
+    "telegram": true,
     "cooldown_seconds": 30,
     "events": {
       "live_detected": true,
@@ -44,7 +44,8 @@
       "low_disk_space": true,
       "upload_started": true,
       "upload_finished": true,
-      "upload_failed": true
+      "upload_failed": true,
+      "upload_blocked": true
     }
   }
 }

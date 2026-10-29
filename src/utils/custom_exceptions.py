@@ -22,22 +22,14 @@ class IPBlockedByWAF(TikTokRecorderError):
 class LiveNotFound(TikTokRecorderError):
     """Raised when a live stream is not found."""
 
-    pass
-
 
 class ArgsParseError(TikTokRecorderError):
     """Raised for argument parsing errors."""
-
-    pass
 
 
 class NetworkError(TikTokRecorderError):
     """Raised for network-related errors."""
 
-    pass
-
 
 class TikRecUnavailableError(TikTokRecorderError):
     """Raised when the tikrec signing service is unreachable or returns an unexpected response."""
-
-    pass
