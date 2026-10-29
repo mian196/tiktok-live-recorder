@@ -76,7 +76,7 @@ class Telegram:
             target_entity = await self._resolve_entity(self.chat_id)
             caption = (
                 "🎥 <b>Video recorded via "
-                '<a href="https://github.com/mian196/tiktok-live-recorder/'
+                '<a href="https://github.com/mian196/'
                 'tiktok-live-recorder">'
                 "TikTok Live Recorder</a></b>"
             )
