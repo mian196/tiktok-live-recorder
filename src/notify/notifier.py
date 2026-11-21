@@ -19,29 +19,35 @@ class Notifier:
         self.discord_url = cfg.get("discord_webhook_url", "")
         self.use_telegram = bool(cfg.get("telegram", False))
         self.cooldown = int(cfg.get("cooldown_seconds", 30))
-        self.events = cfg.get(
-            "events",
-            {
-                "live_detected": True,
-                "recording_started": True,
-                "recording_finished": True,
-                "recording_failed": True,
-                "user_offline": True,
-                "app_started": True,
-                "app_error": True,
-                "low_disk_space": True,
-                "upload_started": True,
-                "upload_finished": True,
-                "upload_failed": True,
-                "upload_blocked": True,
-            },
-        )
+        default_events = {
+            "live_detected": True,
+            "recording_started": True,
+            "recording_finished": True,
+            "recording_failed": True,
+            "user_offline": True,
+            "app_started": True,
+            "app_error": True,
+            "low_disk_space": True,
+            "upload_started": True,
+            "upload_finished": True,
+            "upload_failed": True,
+            "upload_blocked": True,
+            "youtube_token_expired": True,
+            "youtube_token_expiring": True,
+        }
+        user_events = cfg.get("events")
+        if isinstance(user_events, dict):
+            default_events.update(user_events)
+        self.events = default_events
         self._last_sent: dict[str, float] = {}
         self._telegram = None
 
     def _get_cooldown_key(self, event: str, kwargs: dict) -> str:
         user = kwargs.get("user", "")
-        return f"{event}:{user}" if user else event
+        if user:
+            return f"{event}:{user}"
+        project = kwargs.get("project", "")
+        return f"{event}:{project}" if project else event
 
     def _format(self, event: str, **kwargs) -> tuple[str, str, int]:
         """Return (title, description, color) for each event type."""
@@ -172,6 +178,48 @@ class Notifier:
                 title,
                 message,
                 0xE74C3C,  # Red
+            )
+        elif event == "youtube_token_expired":
+            project = kwargs.get("project", "Default")
+            error = kwargs.get("error", "Token is expired or missing.")
+            expires_at = kwargs.get("expires_at", "")
+            token_file = kwargs.get("token_file", "")
+            details = [
+                f"YouTube OAuth token for **{project}** is **expired or invalid**.",
+                f"**Reason:** {error}",
+            ]
+            if expires_at:
+                details.append(f"**Expired At:** `{expires_at}`")
+            if token_file:
+                details.append(f"**Token File:** `{token_file}`")
+            details.append(
+                "\n⚠️ Please generate a new token (`python auth.py --youtube`) and replace it on the server."
+            )
+            return (
+                "🔑 YouTube Token Expired",
+                "\n".join(details),
+                0xE74C3C,  # Red
+            )
+        elif event == "youtube_token_expiring":
+            project = kwargs.get("project", "Default")
+            expires_at = kwargs.get("expires_at", "Unknown")
+            remaining = kwargs.get("remaining", "")
+            token_file = kwargs.get("token_file", "")
+            details = [
+                f"YouTube OAuth token for **{project}** is currently **valid**.",
+                f"**Exact Expiration Time:** `{expires_at}`",
+            ]
+            if remaining:
+                details.append(f"**Time Remaining:** {remaining}")
+            if token_file:
+                details.append(f"**Token File:** `{token_file}`")
+            details.append(
+                "\nℹ️ Remember to generate a new token (`python auth.py --youtube`) and replace it on the server before it expires."
+            )
+            return (
+                "⏳ YouTube Token Expiry Reminder",
+                "\n".join(details),
+                0xF1C40F,  # Yellow
             )
         else:
             return ("Notification", str(kwargs), 0x95A5A6)

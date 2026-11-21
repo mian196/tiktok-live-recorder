@@ -268,6 +268,12 @@ class YouTube:
                     with open(temp_path, "w", encoding="utf-8") as f:
                         f.write(creds.to_json())
                     os.replace(temp_path, storage_path)
+                    try:
+                        from upload.youtube_token_monitor import record_token_issued
+
+                        record_token_issued(storage_path)
+                    except Exception:
+                        pass
                     logger.info(
                         f"YouTube credentials saved to {storage_path} for [{name}]"
                     )

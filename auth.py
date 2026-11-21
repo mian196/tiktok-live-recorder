@@ -104,6 +104,12 @@ def authenticate_youtube():
             os.makedirs(os.path.dirname(os.path.abspath(storage_path)), exist_ok=True)
             with open(storage_path, "w", encoding="utf-8") as f:
                 f.write(creds.to_json())
+            try:
+                from upload.youtube_token_monitor import record_token_issued
+
+                record_token_issued(storage_path)
+            except Exception:
+                pass
             print(f"[✓] SUCCESS: Token saved to {storage_path}\n")
         except Exception as e:
             print(f"[!] Authentication failed for [{name}]: {e}\n")

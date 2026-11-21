@@ -189,3 +189,36 @@ def test_notifier_telegram_bot_api():
         assert data["chat_id"] == "987654321"
         assert "Upload Blocked" in data["text"]
         assert "OAuth token expired" in data["text"]
+
+
+def test_notifier_youtube_token_events():
+    with patch("requests.post") as mock_post:
+        notifier = Notifier(
+            {
+                "enabled": True,
+                "discord_webhook_url": "http://fake.discord/hook",
+                "telegram": True,
+                "telegram_bot_token": "bot123",
+                "telegram_chat_id": "999",
+            }
+        )
+
+        notifier.notify(
+            "youtube_token_expired",
+            project="Project 1",
+            error="Refresh token expired or revoked",
+            expires_at="2026-11-28 09:00:00 (UTC-05:00)",
+            token_file="configs/youtube_token.json",
+        )
+        notifier.notify(
+            "youtube_token_expiring",
+            project="Project 2",
+            expires_at="2026-11-29 09:00:00 (UTC-05:00)",
+            remaining="in 1d 2h 0m",
+            token_file="configs/youtube_token_2.json",
+        )
+
+        assert mock_post.call_count == 4
+        urls = [c.args[0] for c in mock_post.call_args_list]
+        assert urls.count("http://fake.discord/hook") == 2
+        assert urls.count("https://api.telegram.org/botbot123/sendMessage") == 2
