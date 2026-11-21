@@ -71,7 +71,7 @@ def main() -> int:
         "--remind-before-hours",
         type=float,
         default=None,
-        help="Send expiry reminder when remaining hours <= this threshold (default: config or 168h).",
+        help="Send expiry reminder when remaining hours <= this threshold (default: config or 6h).",
     )
     parser.add_argument(
         "--no-notify",

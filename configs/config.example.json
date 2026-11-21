@@ -34,7 +34,7 @@
     "telegram": true,
     "cooldown_seconds": 30,
     "youtube_token_lifetime_days": 7,
-    "youtube_token_remind_before_hours": 168,
+    "youtube_token_remind_before_hours": 6,
     "events": {
       "live_detected": true,
       "recording_started": true,

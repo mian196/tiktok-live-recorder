@@ -8,6 +8,8 @@ from google.auth.exceptions import RefreshError
 from notify.notifier import Notifier
 from upload.youtube import YouTube
 from upload.youtube_token_monitor import (
+    DEFAULT_REMIND_BEFORE_HOURS,
+    _compute_next_wait_seconds,
     check_all_youtube_tokens,
     check_project_token,
     get_token_expiry_info,
@@ -224,3 +226,17 @@ def test_remind_before_hours_skips_far_expiry(tmp_path):
             state_path=str(state_file),
         )
         assert not mock_post.called
+
+
+def test_default_6h_remind_threshold_and_smart_wakeup():
+    assert DEFAULT_REMIND_BEFORE_HOURS == 6.0
+
+    # Token has 10 hours left, regular interval is 12 hours, threshold is 6 hours ->
+    # should wake up in ~4 hours (at the 6-hour mark) instead of sleeping 12 hours.
+    results = [{"status": "valid", "remaining_seconds": 10 * 3600.0}]
+    wait = _compute_next_wait_seconds(results, 12 * 3600.0, 6.0)
+    assert 4 * 3600.0 <= wait <= 4 * 3600.0 + 5.0
+
+    # Token has 30 hours left -> regular 12h interval is shorter, so sleep 12 hours.
+    results_far = [{"status": "valid", "remaining_seconds": 30 * 3600.0}]
+    assert _compute_next_wait_seconds(results_far, 12 * 3600.0, 6.0) == 12 * 3600.0

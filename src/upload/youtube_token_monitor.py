@@ -23,7 +23,7 @@ from upload.youtube import SCOPES, YouTube
 
 DEFAULT_TOKEN_LIFETIME_DAYS = 7.0
 DEFAULT_CHECK_INTERVAL_HOURS = 12.0
-DEFAULT_REMIND_BEFORE_HOURS = 168.0
+DEFAULT_REMIND_BEFORE_HOURS = 6.0
 
 
 def _get_state_path(state_path: str | None = None) -> str:
@@ -312,6 +312,29 @@ def check_all_youtube_tokens(
     return results
 
 
+def _compute_next_wait_seconds(
+    results: list[dict],
+    interval_seconds: float,
+    remind_before_hours: float,
+) -> float:
+    """
+    Return seconds to sleep before the next check.
+    If any valid token will cross the `remind_before_hours` threshold before the
+    next regular interval, wake up right when that threshold is reached.
+    """
+    wait_seconds = interval_seconds
+    threshold_secs = max(0.0, float(remind_before_hours)) * 3600.0
+    for res in results:
+        if res.get("status") != "valid":
+            continue
+        remaining = res.get("remaining_seconds")
+        if remaining is not None and remaining > threshold_secs:
+            until_threshold = (remaining - threshold_secs) + 1.0
+            if until_threshold < wait_seconds:
+                wait_seconds = until_threshold
+    return max(60.0, wait_seconds)
+
+
 def run_monitor_loop(
     interval_hours: float = DEFAULT_CHECK_INTERVAL_HOURS,
     remind_before_hours: float | None = None,
@@ -321,14 +344,25 @@ def run_monitor_loop(
     """Continuously check YouTube token status every `interval_hours`."""
     stop_event = stop_event or threading.Event()
     interval_seconds = max(60.0, float(interval_hours) * 3600.0)
+    effective_remind = (
+        remind_before_hours
+        if remind_before_hours is not None
+        else float(
+            read_config()
+            .get("notifications", {})
+            .get("youtube_token_remind_before_hours", DEFAULT_REMIND_BEFORE_HOURS)
+        )
+    )
     logger.info(
-        f"[YouTube Token Monitor] Started (checking every {interval_hours:g} hours)."
+        f"[YouTube Token Monitor] Started (checking every {interval_hours:g} hours, "
+        f"reminding at <= {effective_remind:g}h remaining)."
     )
 
     while not stop_event.is_set():
+        wait_seconds = interval_seconds
         try:
             results = check_all_youtube_tokens(
-                remind_before_hours=remind_before_hours,
+                remind_before_hours=effective_remind,
                 notify=notify,
             )
             for res in results:
@@ -340,8 +374,11 @@ def run_monitor_loop(
                     logger.warning(
                         f"[YouTube Token Monitor] [{res['project']}] {res['status'].upper()} — {res['error']}"
                     )
+            wait_seconds = _compute_next_wait_seconds(
+                results, interval_seconds, effective_remind
+            )
         except Exception as e:
             logger.error(f"[YouTube Token Monitor] Check failed: {e}")
 
-        if stop_event.wait(timeout=interval_seconds):
+        if stop_event.wait(timeout=wait_seconds):
             break
