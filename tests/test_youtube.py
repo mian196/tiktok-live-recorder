@@ -19,12 +19,15 @@ def isolate_youtube_test_env(tmp_path, monkeypatch):
     """Ensure every test runs with an isolated queue and clear exhaustion state."""
     YouTube._exhausted_projects.clear()
     test_queue = tmp_path / "test_isolated_queue.json"
+    test_state = tmp_path / "test_isolated_upload_state.json"
     orig_read = YouTube.__init__
 
     def wrapped_init(self, config_override=None):
         cfg = dict(config_override) if config_override else {}
         if "queue_file" not in cfg:
             cfg["queue_file"] = str(test_queue)
+        if "upload_state_file" not in cfg:
+            cfg["upload_state_file"] = str(test_state)
         orig_read(self, config_override=cfg)
 
     monkeypatch.setattr(YouTube, "__init__", wrapped_init)
@@ -599,3 +602,98 @@ def test_upload_adds_video_to_playlist(tmp_path, monkeypatch):
     call_kwargs = mock_service.playlistItems().insert.call_args[1]
     assert call_kwargs["body"]["snippet"]["playlistId"] == "PL_GAMER_123"
     assert call_kwargs["body"]["snippet"]["resourceId"]["videoId"] == "uploaded_vid_999"
+
+
+def test_upload_state_tracks_failed_and_finished(tmp_path, monkeypatch):
+    import os
+
+    video = tmp_path / "state_vid.mp4"
+    video.write_bytes(b"data" * 100)
+
+    yt = YouTube()
+    # First attempt fails due to expired auth
+    monkeypatch.setattr(yt, "_get_authenticated_service_for_project", lambda p: None)
+    yt.last_error = "YouTube OAuth token expired"
+    assert yt.upload(str(video), user="streamer1") is False
+
+    state = yt.get_upload_state()
+    abs_vid = os.path.abspath(str(video))
+    assert state[abs_vid]["status"] == "failed"
+    assert "expired" in state[abs_vid]["error"].lower()
+
+    # User replaces token and restarts -> recover_pending_uploads retries failed file
+    mock_service = MagicMock()
+    mock_insert = MagicMock()
+    mock_insert.next_chunk.return_value = (None, {"id": "vid_recovered_1"})
+    mock_service.videos.return_value.insert.return_value = mock_insert
+    monkeypatch.setattr(
+        yt, "_get_authenticated_service_for_project", lambda p: mock_service
+    )
+
+    summary = yt.recover_pending_uploads()
+    assert summary["retried_ok"] == 1
+    assert summary["still_failed"] == 0
+
+    state_after = yt.get_upload_state()
+    assert state_after[abs_vid]["status"] == "finished"
+    assert state_after[abs_vid]["video_id"] == "vid_recovered_1"
+
+
+def test_recover_in_progress_verifies_youtube_before_reupload(tmp_path, monkeypatch):
+    import os
+
+    vid_done = tmp_path / "crashed_but_done.mp4"
+    vid_done.write_bytes(b"done" * 100)
+    vid_partial = tmp_path / "crashed_partial.mp4"
+    vid_partial.write_bytes(b"part" * 100)
+
+    yt = YouTube(config_override={"title_template": "Live: {username} ({filename})"})
+    yt._set_upload_state(
+        str(vid_done),
+        status="in_progress",
+        user="alice",
+        title="Live: alice (crashed_but_done)",
+    )
+    yt._set_upload_state(
+        str(vid_partial),
+        status="in_progress",
+        user="bob",
+        title="Live: bob (crashed_partial)",
+    )
+
+    mock_service = MagicMock()
+    mock_service.channels.return_value.list.return_value.execute.return_value = {
+        "items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU_123"}}}]
+    }
+    # Only alice's video is already on YouTube
+    mock_service.playlistItems.return_value.list.return_value.execute.return_value = {
+        "items": [
+            {
+                "snippet": {"title": "Live: alice (crashed_but_done)"},
+                "contentDetails": {"videoId": "yt_existing_alice"},
+            }
+        ]
+    }
+    mock_insert = MagicMock()
+    mock_insert.next_chunk.return_value = (None, {"id": "yt_new_bob"})
+    mock_service.videos.return_value.insert.return_value = mock_insert
+
+    monkeypatch.setattr(
+        yt, "_get_authenticated_service_for_project", lambda p: mock_service
+    )
+
+    summary = yt.recover_pending_uploads()
+    assert summary["verified"] == 1
+    assert summary["retried_ok"] == 1
+    assert summary["still_failed"] == 0
+
+    # Only bob's partial video should have triggered videos().insert()
+    mock_service.videos.return_value.insert.assert_called_once()
+
+    final_state = yt.get_upload_state()
+    assert final_state[os.path.abspath(str(vid_done))]["status"] == "finished"
+    assert (
+        final_state[os.path.abspath(str(vid_done))]["video_id"] == "yt_existing_alice"
+    )
+    assert final_state[os.path.abspath(str(vid_partial))]["status"] == "finished"
+    assert final_state[os.path.abspath(str(vid_partial))]["video_id"] == "yt_new_bob"

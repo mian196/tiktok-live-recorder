@@ -182,6 +182,30 @@ def main():
         )
         recovery_thread.start()
 
+        def _run_youtube_upload_recovery():
+            try:
+                from upload.youtube import YouTube
+
+                yt = YouTube()
+                state = yt.get_upload_state()
+                has_pending = any(
+                    isinstance(v, dict) and v.get("status") in ("in_progress", "failed")
+                    for v in state.values()
+                )
+                if getattr(args, "youtube", False) or has_pending:
+                    yt.recover_pending_uploads()
+            except Exception as e:
+                logger.warning(
+                    f"[Upload Recovery] Background YouTube upload recovery encountered an issue: {e}"
+                )
+
+        yt_recovery_thread = threading.Thread(
+            target=_run_youtube_upload_recovery,
+            name="YouTubeUploadRecoveryThread",
+            daemon=True,
+        )
+        yt_recovery_thread.start()
+
         # check for updates
         if args.update_check is True:
             logger.info("Checking for updates...\n")

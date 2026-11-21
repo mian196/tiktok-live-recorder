@@ -157,6 +157,10 @@ class YouTube:
         raw_queue = cfg.get("queue_file", "youtube_queue.json")
         self.queue_path = _resolve_path(raw_queue, "youtube_queue.json")
 
+        # Temporary upload state tracker (in_progress / failed / finished)
+        raw_state = cfg.get("upload_state_file", "youtube_upload_state.json")
+        self.upload_state_path = _resolve_path(raw_state, "youtube_upload_state.json")
+
         self.privacy_status = cfg.get("privacy_status", "private").lower()
         if self.privacy_status not in ["private", "unlisted", "public"]:
             self.privacy_status = "private"
@@ -600,6 +604,234 @@ class YouTube:
             return successful_uploads
 
     # =========================================================================
+    # Upload State Tracker (finished / in_progress / failed) & Crash Recovery
+    # =========================================================================
+
+    def _load_upload_state(self) -> dict[str, dict]:
+        """Load the temporary upload state map keyed by absolute file path."""
+        if not os.path.exists(self.upload_state_path):
+            return {}
+        try:
+            with open(self.upload_state_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.debug(f"Could not load YouTube upload state: {e}")
+            return {}
+
+    def _save_upload_state(self, state: dict[str, dict]) -> None:
+        """Atomically persist the upload state map to disk."""
+        try:
+            os.makedirs(
+                os.path.dirname(os.path.abspath(self.upload_state_path)), exist_ok=True
+            )
+            temp_path = f"{self.upload_state_path}.tmp.{os.getpid()}"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            os.replace(temp_path, self.upload_state_path)
+        except Exception as e:
+            logger.warning(f"Could not save YouTube upload state: {e}")
+
+    def _set_upload_state(
+        self,
+        file_path: str,
+        status: str,
+        user: str = "",
+        nickname: str = "",
+        room_id: str = "",
+        playlist: str | None = None,
+        purge_after: bool = False,
+        title: str = "",
+        video_id: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Record or update an entry in the temporary upload state tracker."""
+        abs_path = os.path.abspath(file_path)
+        now = time.time()
+        with _youtube_lock:
+            state = self._load_upload_state()
+            existing = state.get(abs_path, {})
+            state[abs_path] = {
+                "file_path": abs_path,
+                "status": status,
+                "user": user if user else existing.get("user", ""),
+                "nickname": nickname if nickname else existing.get("nickname", ""),
+                "room_id": str(room_id or existing.get("room_id", "")),
+                "playlist": playlist
+                if playlist is not None
+                else existing.get("playlist"),
+                "purge_after": bool(purge_after),
+                "title": title or existing.get("title", ""),
+                "video_id": video_id
+                if video_id is not None
+                else existing.get("video_id"),
+                "error": error,
+                "created_at": existing.get("created_at", now),
+                "updated_at": now,
+            }
+            self._save_upload_state(state)
+
+    def get_upload_state(self) -> dict[str, dict]:
+        """Return the current upload state dictionary (finished, in_progress, failed)."""
+        with _youtube_lock:
+            return self._load_upload_state()
+
+    def _verify_video_on_youtube(
+        self, expected_title: str, started_at: float | None = None
+    ) -> str | None:
+        """
+        Check the authenticated channel's recent uploads on YouTube to see if a video
+        with `expected_title` already finished uploading before a crash.
+        Returns the matched video_id if found, else None.
+        """
+        if not expected_title:
+            return None
+
+        for project in self.projects:
+            service = self._get_authenticated_service_for_project(project)
+            if not service:
+                continue
+            try:
+                ch_resp = (
+                    service.channels().list(part="contentDetails", mine=True).execute()
+                )
+                items = ch_resp.get("items", [])
+                if not items:
+                    continue
+                uploads_pl = (
+                    items[0]
+                    .get("contentDetails", {})
+                    .get("relatedPlaylists", {})
+                    .get("uploads")
+                )
+                if not uploads_pl:
+                    continue
+
+                pl_resp = (
+                    service.playlistItems()
+                    .list(
+                        part="snippet,contentDetails",
+                        playlistId=uploads_pl,
+                        maxResults=25,
+                    )
+                    .execute()
+                )
+                for item in pl_resp.get("items", []):
+                    snippet = item.get("snippet", {})
+                    if snippet.get("title") != expected_title:
+                        continue
+                    vid = item.get("contentDetails", {}).get("videoId") or snippet.get(
+                        "resourceId", {}
+                    ).get("videoId")
+                    if not vid:
+                        continue
+                    published_at = snippet.get("publishedAt")
+                    if started_at and published_at:
+                        try:
+                            pub_ts = datetime.fromisoformat(
+                                published_at.replace("Z", "+00:00")
+                            ).timestamp()
+                            if pub_ts < (started_at - 300):
+                                continue
+                        except Exception:
+                            pass
+                    return vid
+            except Exception as e:
+                logger.debug(
+                    f"Could not verify upload status on YouTube for [{project['name']}]: {e}"
+                )
+        return None
+
+    def recover_pending_uploads(self) -> dict[str, int]:
+        """
+        Inspect the temporary upload state list at startup:
+        - For 'in_progress' entries (e.g. after a crash): verify with YouTube whether
+          the upload already completed; if so mark 'finished', otherwise re-upload.
+        - For 'failed' entries (e.g. after token expiry): retry uploading.
+        Returns counts {'verified': int, 'retried_ok': int, 'still_failed': int}.
+        """
+        summary = {"verified": 0, "retried_ok": 0, "still_failed": 0}
+        with _youtube_lock:
+            state = self._load_upload_state()
+            pending = [
+                (path, entry)
+                for path, entry in state.items()
+                if isinstance(entry, dict)
+                and entry.get("status") in ("in_progress", "failed")
+            ]
+            if not pending:
+                return summary
+
+            for abs_path, entry in pending:
+                status = entry.get("status")
+                if not os.path.exists(abs_path):
+                    logger.debug(
+                        f"Pending upload file no longer exists, skipping recovery: {abs_path}"
+                    )
+                    continue
+
+                user = entry.get("user", "")
+                nickname = entry.get("nickname", "")
+                room_id = entry.get("room_id", "")
+                playlist = entry.get("playlist")
+                purge_after = bool(entry.get("purge_after", False))
+                title = entry.get("title", "")
+
+                if status == "in_progress":
+                    logger.info(
+                        f"[Upload Recovery] Found interrupted upload '{Path(abs_path).name}'. Verifying status on YouTube..."
+                    )
+                    matched_vid = self._verify_video_on_youtube(
+                        title, started_at=entry.get("created_at")
+                    )
+                    if matched_vid:
+                        logger.info(
+                            f"[Upload Recovery] Verified '{Path(abs_path).name}' already exists on YouTube (video_id={matched_vid}). Marking finished."
+                        )
+                        target_pl = self.get_playlist_for_streamer(
+                            user, explicit_playlist=playlist
+                        )
+                        if target_pl:
+                            self.add_video_to_playlist(matched_vid, target_pl)
+                        if purge_after and os.path.exists(abs_path):
+                            try:
+                                os.unlink(abs_path)
+                            except OSError:
+                                pass
+                        self._set_upload_state(
+                            abs_path,
+                            status="finished",
+                            user=user,
+                            nickname=nickname,
+                            room_id=room_id,
+                            playlist=playlist,
+                            purge_after=purge_after,
+                            title=title,
+                            video_id=matched_vid,
+                            error=None,
+                        )
+                        summary["verified"] += 1
+                        continue
+
+                logger.info(
+                    f"[Upload Recovery] Retrying {status} upload '{Path(abs_path).name}'..."
+                )
+                ok = self._upload_internal(
+                    abs_path,
+                    user=user,
+                    nickname=nickname,
+                    room_id=room_id,
+                    playlist=playlist,
+                    purge_after=purge_after,
+                )
+                if ok:
+                    summary["retried_ok"] += 1
+                else:
+                    summary["still_failed"] += 1
+
+        return summary
+
+    # =========================================================================
     # Method 2: Multi-Project / Credential Rotation
     # =========================================================================
 
@@ -637,6 +869,17 @@ class YouTube:
 
         title, description = self._format_metadata(
             user, source_path, nickname=nickname, room_id=room_id
+        )
+        self._set_upload_state(
+            str(source_path),
+            status="in_progress",
+            user=user,
+            nickname=nickname,
+            room_id=room_id,
+            playlist=playlist,
+            purge_after=purge_after,
+            title=title,
+            error=None,
         )
         snippet = {
             "title": title,
@@ -784,6 +1027,18 @@ class YouTube:
                         except Exception as e:
                             logger.warning(f"Could not purge {source_path.name}: {e}")
 
+                    self._set_upload_state(
+                        str(source_path),
+                        status="finished",
+                        user=user,
+                        nickname=nickname,
+                        room_id=room_id,
+                        playlist=playlist,
+                        purge_after=purge_after,
+                        title=title,
+                        video_id=video_id,
+                        error=None,
+                    )
                     return True
 
             except Exception as e:
@@ -805,6 +1060,17 @@ class YouTube:
             logger.error(
                 f"YouTube upload blocked: {self.last_error}. Retaining local file '{source_path.name}'."
             )
+            self._set_upload_state(
+                str(source_path),
+                status="failed",
+                user=user,
+                nickname=nickname,
+                room_id=room_id,
+                playlist=playlist,
+                purge_after=purge_after,
+                title=title,
+                error=self.last_error,
+            )
             return False
 
         if (
@@ -824,6 +1090,17 @@ class YouTube:
                 purge_after=purge_after,
                 error_reason="quotaExceeded",
             )
+            self._set_upload_state(
+                str(source_path),
+                status="failed",
+                user=user,
+                nickname=nickname,
+                room_id=room_id,
+                playlist=playlist,
+                purge_after=purge_after,
+                title=title,
+                error=self.last_error,
+            )
             logger.info(
                 f"Local recording '{source_path.name}' is safely retained until upload completes."
             )
@@ -832,6 +1109,17 @@ class YouTube:
         if not self.last_error:
             self.last_error = "YouTube upload did not complete."
 
+        self._set_upload_state(
+            str(source_path),
+            status="failed",
+            user=user,
+            nickname=nickname,
+            room_id=room_id,
+            playlist=playlist,
+            purge_after=purge_after,
+            title=title,
+            error=self.last_error,
+        )
         return False
 
     def upload(
