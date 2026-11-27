@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from threading import Event, Thread
 
+from core.tiktok_api import TikTokAPI
 from utils.logger_manager import logger
 from utils.status_bar import RecordingStatusBar
 from utils.video_management import VideoManagement
@@ -366,7 +367,9 @@ class RequestsStrategy(BaseRecordingStrategy):
                     time.sleep(self.recorder.retry_delay)
                     continue
 
-                segment_path = f"{base_stem}-part{part_index}.flv"
+                is_hls = TikTokAPI.is_hls_url(live_url)
+                segment_ext = "ts" if is_hls else "flv"
+                segment_path = f"{base_stem}-part{part_index}.{segment_ext}"
                 segment_bytes = 0
                 buffer = bytearray()
                 part_reason = "Stream completed"
@@ -376,10 +379,22 @@ class RequestsStrategy(BaseRecordingStrategy):
 
                 try:
                     with open(segment_path, "wb") as out_file:
+                        stream = (
+                            VideoManagement.download_hls_stream(
+                                live_url,
+                                duration=self.recorder.duration,
+                                ffmpeg_path=getattr(self.recorder, "ffmpeg_path", None),
+                                headers=(
+                                    self.recorder.tiktok.get_stream_headers()
+                                    if hasattr(self.recorder.tiktok, "get_stream_headers")
+                                    else None
+                                ),
+                            )
+                            if is_hls
+                            else self.recorder.tiktok.download_live_stream(live_url)
+                        )
                         try:
-                            for chunk in self.recorder.tiktok.download_live_stream(
-                                live_url
-                            ):
+                            for chunk in stream:
                                 if stop_event.is_set():
                                     break
                                 buffer.extend(chunk)
@@ -433,6 +448,9 @@ class RequestsStrategy(BaseRecordingStrategy):
                                     except Exception:
                                         pass
                         finally:
+                            close_stream = getattr(stream, "close", None)
+                            if close_stream:
+                                close_stream()
                             if buffer:
                                 out_file.write(buffer)
                                 buffer.clear()

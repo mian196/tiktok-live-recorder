@@ -313,3 +313,20 @@ def test_convert_segments_passes_probesize_and_analyzeduration(tmp_path):
             analyzeduration="50M",
             fflags="+genpts+discardcorrupt",
         )
+
+
+def test_convert_to_mp4_handles_hls_and_flv_suffixes(tmp_path):
+    hls_file = tmp_path / "TK_user_2026_hls.ts"
+    hls_file.write_bytes(b"ts content")
+    flv_file = tmp_path / "TK_user_2026_flv.mp4"
+    flv_file.write_bytes(b"flv content")
+
+    with patch.object(
+        VideoManagement, "convert_segments_to_mp4", return_value=True
+    ) as mock_convert:
+        VideoManagement.convert_to_mp4(str(hls_file))
+        VideoManagement.convert_to_mp4(str(flv_file))
+
+    assert mock_convert.call_args_list[0].args[1] == str(tmp_path / "TK_user_2026.mp4")
+    assert mock_convert.call_args_list[1].args[1] == str(tmp_path / "TK_user_2026.mp4")
+

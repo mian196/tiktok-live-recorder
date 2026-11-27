@@ -186,3 +186,61 @@ def test_is_room_alive_handles_dns_and_network_exceptions():
     api.http_client = FailingClient()
     # Must not raise an exception; must return False gracefully
     assert api.is_room_alive("123") is False
+
+
+def test_is_room_alive_and_get_live_url_accept_paused_status():
+    api = build_api(
+        {"data": [{"alive": True, "room_id": 123}], "status_code": 0},
+        {
+            "data": {
+                "status": 3,
+                "stream_url": {
+                    "hls_pull_url": "https://cdn/paused/playlist.m3u8",
+                },
+            },
+            "status_code": 0,
+        },
+        {
+            "data": {
+                "status": 3,
+                "stream_url": {
+                    "hls_pull_url": "https://cdn/paused/playlist.m3u8",
+                },
+            },
+            "status_code": 0,
+        },
+    )
+
+    assert api.is_room_alive("123") is True
+    assert api.get_live_url("123", user="creator") == "https://cdn/paused/playlist.m3u8"
+
+
+def test_is_hls_url():
+    assert TikTokAPI.is_hls_url("https://cdn/live/playlist.m3u8?token=abc") is True
+    assert TikTokAPI.is_hls_url("https://cdn/live/stream.flv") is False
+
+
+def test_tikrec_retries_then_succeeds(monkeypatch):
+    api = TikTokAPI.__new__(TikTokAPI)
+    api.BASE_URL = "https://www.tiktok.com"
+    api.TIKREC_API = "https://tikrec.com"
+
+    attempts = {"count": 0}
+
+    class FlakyClient:
+        def get(self, url, params=None, timeout=None):
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise ConnectionError("temporary failure")
+            resp = FakeResponse({"signed_path": "/api-live/user/room/?signed=1"})
+            resp.raise_for_status = lambda: None
+            return resp
+
+    api.http_client = FlakyClient()
+    monkeypatch.setattr("core.tiktok_api.time.sleep", lambda *_: None)
+
+    assert api._tikrec_get_room_id_signed_url("creator") == (
+        "https://www.tiktok.com/api-live/user/room/?signed=1"
+    )
+    assert attempts["count"] == 3
+

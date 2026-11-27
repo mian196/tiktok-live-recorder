@@ -463,3 +463,51 @@ def test_automatic_mode_logs_when_check_fails():
         "Check failed for @error_user: WAF blocked request" in log
         for log in warning_logs
     )
+
+
+def test_followers_mode_retries_on_tikrec_unavailable():
+    from unittest.mock import patch
+
+    from core.tiktok_recorder import TikTokRecorder
+    from utils.custom_exceptions import TikRecUnavailableError
+    from utils.enums import Mode
+    from utils.recorder_config import RecorderConfig
+
+    recorder = TikTokRecorder(
+        RecorderConfig(
+            mode=Mode.FOLLOWERS,
+            user="me",
+            automatic_interval=1,
+            cookies={"sessionid": "123"},
+        )
+    )
+
+    calls = {"count": 0}
+
+    class FakeFollowersAPI:
+        def get_sec_uid(self):
+            return "sec_123"
+
+        def get_followers_list(self, sec_uid):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise TikRecUnavailableError("tikrec down")
+            raise KeyboardInterrupt
+
+        def reset_session(self):
+            pass
+
+        def is_country_blacklisted(self):
+            return False
+
+    recorder.tiktok = FakeFollowersAPI()
+    recorder.sec_uid = "sec_123"
+
+    with patch("time.sleep", return_value=None):
+        try:
+            recorder.followers_mode()
+        except KeyboardInterrupt:
+            pass
+
+    assert calls["count"] == 2
+

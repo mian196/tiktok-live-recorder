@@ -1,3 +1,4 @@
+from functools import partial
 import socket
 
 import requests
@@ -62,7 +63,11 @@ class HttpClient:
         self.req_stream.mount("http://", stream_adapter)
 
         if is_termux():
+            # requests has no session-wide timeout. Without one, a keep-alive
+            # socket left dead by a network change blocks a request forever.
+            # curl_cffi sessions already default to 30 seconds.
             self.req = self.req_stream
+            self.req.request = partial(self.req.request, timeout=(10, 30))
         else:
             from curl_cffi import CurlOpt, CurlSslVersion, Session
 

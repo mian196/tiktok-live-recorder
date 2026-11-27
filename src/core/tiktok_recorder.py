@@ -11,13 +11,30 @@ from requests import RequestException
 
 from core.tiktok_api import TikTokAPI
 from notify.notifier import Notifier
-from utils.custom_exceptions import LiveNotFound, TikTokRecorderError, UserLiveError
+from utils.custom_exceptions import (
+    LiveNotFound,
+    TikRecUnavailableError,
+    TikTokRecorderError,
+    UserLiveError,
+)
 from utils.enums import Error, Mode, TikTokError, TimeOut
 from utils.logger_manager import logger
 from utils.recorder_config import RecorderConfig
 from utils.status_bar import RecordingStatusBar
 from utils.user_identity import TrackedUser, parse_tracked_users
 from utils.utils import update_tracked_users_in_config
+
+_NETWORK_ERRORS = (ConnectionError, RequestException, HTTPException, OSError)
+try:
+    # TikTok calls go through curl_cffi; its errors do not subclass requests'.
+    from curl_cffi.requests.exceptions import RequestException as CurlError
+
+    _NETWORK_ERRORS += (CurlError,)
+except ImportError:  # Termux uses plain requests
+    pass
+
+# Transient failures the automatic and followers loops wait out and retry.
+_RETRYABLE_ERRORS = _NETWORK_ERRORS + (TikRecUnavailableError,)
 
 
 class _ConversionLock:
@@ -398,7 +415,7 @@ class TikTokRecorder:
                     logger.warning(f"Check failed for @{self.user}: {ex}")
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except (ConnectionError, RequestException, HTTPException, OSError) as ex:
+            except _RETRYABLE_ERRORS as ex:
                 logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
                 self.tiktok.reset_session()
                 time.sleep(self.retry_delay)
@@ -484,12 +501,7 @@ class TikTokRecorder:
                             logger.warning(
                                 f"Check failed for @{user_obj.username}: {ex}"
                             )
-                    except (
-                        ConnectionError,
-                        RequestException,
-                        HTTPException,
-                        OSError,
-                    ) as ex:
+                    except _RETRYABLE_ERRORS as ex:
                         logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
                         self.tiktok.reset_session()
                         time.sleep(self.retry_delay)
@@ -572,8 +584,8 @@ class TikTokRecorder:
                     logger.warning(f"Check failed: {ex}")
                 time.sleep(self.automatic_interval * TimeOut.ONE_MINUTE)
 
-            except (ConnectionError, RequestException, HTTPException, OSError):
-                logger.error(Error.CONNECTION_CLOSED_AUTOMATIC)
+            except _RETRYABLE_ERRORS as ex:
+                logger.error(f"{Error.CONNECTION_CLOSED_AUTOMATIC} ({ex})")
                 self.tiktok.reset_session()
                 time.sleep(self.retry_delay)
 
